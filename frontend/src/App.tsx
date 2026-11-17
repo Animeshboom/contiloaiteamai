@@ -16,6 +16,9 @@ import LoginPage from "@/pages/login"
 import MyAttendancePage from "@/pages/my-attendance"
 import ProjectDetailPage, { EpisodesScenesPage } from "@/pages/project-detail"
 import ProjectsPage from "@/pages/projects"
+import ReviewsPage from "@/pages/reviews"
+import SubmissionsPage from "@/pages/submissions"
+import SubmitWorkPage from "@/pages/submit-work"
 import SettingsPage from "@/pages/settings"
 import StaffOverviewPage from "@/pages/staff-overview"
 import TeamsPage from "@/pages/teams"
@@ -71,6 +74,8 @@ export default function App() {
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="episodes" element={<EpisodesScenesPage />} />
         <Route path="assignments" element={<AssignmentsPage />} />
+        <Route path="submissions" element={<SubmissionsPage mode="lead" />} />
+        <Route path="reviews" element={<ReviewsPage />} />
         <Route path="artists" element={<ArtistsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
@@ -80,6 +85,9 @@ export default function App() {
         <Route index element={<ArtistDashboardPage />} />
         <Route path="attendance" element={<MyAttendancePage />} />
         <Route path="assignments" element={<AssignmentsPage />} />
+        <Route path="submit" element={<SubmitWorkPage />} />
+        <Route path="reviews" element={<SubmissionsPage key="reviews" mode="artist-reviews" />} />
+        <Route path="history" element={<SubmissionsPage key="history" mode="artist-history" />} />
         <Route path="*" element={<NotFound />} />
       </Route>
 

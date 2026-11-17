@@ -81,6 +81,35 @@ export interface Assignee {
   id: number; user_id: number; full_name: string; status: AssignmentStatus
   reported_progress_pct: number; progress_note: string | null
   scenes_submitted: number; scenes_approved: number
+  /** scene_id -> latest state from submissions/reviews */
+  scene_states: Record<string, SceneState>
+}
+
+export type SceneState = "submitted" | "approved" | "rejected"
+export type SubmissionStatus = "pending_review" | "approved" | "rejected"
+
+export interface Deliverable {
+  id: number; scene_id: number | null; label: string; status: SceneState
+  approved_at: string | null; approved_by_name: string | null
+}
+
+export interface Attachment { id: number; original_filename: string; content_type: string | null; size_bytes: number; created_at: string }
+
+export interface Review {
+  id: number; reviewer_id: number; reviewer_name: string; decision: "approved" | "rejected"
+  feedback: string | null; approved_scene_ids: number[]; created_at: string
+}
+
+export interface Submission {
+  id: number; assignment_id: number; assignment_title: string
+  project_id: number; project_title: string; project_code: string
+  episode_number: number | null; episode_title: string | null
+  artist_id: number; artist_name: string
+  revision_number: number; previous_submission_id: number | null; is_resubmission: boolean
+  submitted_at: string; submission_date: string; is_late: boolean; deadline: string
+  scenes_completed_count: number; work_description: string; output_links: string[]; comments: string | null
+  status: SubmissionStatus
+  deliverables: Deliverable[]; attachments: Attachment[]; reviews: Review[]
 }
 
 export interface Assignment {

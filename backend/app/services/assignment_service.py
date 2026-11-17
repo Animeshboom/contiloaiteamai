@@ -9,14 +9,14 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ValidationFailed
+from app.core.errors import Conflict, Forbidden, ValidationFailed
 from app.core.timeutils import ensure_utc, studio_day_bounds_utc, studio_eod, studio_today, utcnow
 from app.models import (
-    Assignment, AssignmentAssignee, AssignmentScene, AssignmentStatus, DeliverableStatus, Episode, Priority,
-    ProjectStatus, RoleName, Scene, Submission, SubmissionDeliverable, User,
+    Assignment, AssignmentAssignee, AssignmentScene, AssignmentStatus, Episode, Priority,
+    ProjectStatus, RoleName, Scene, Submission, User,
 )
 from app.schemas.assignments import AssigneeOut, AssignmentCreate, AssignmentOut, AssignmentUpdate, SceneRef
-from app.services import audit, scope
+from app.services import audit, progress, scope
 
 DONE = {AssignmentStatus.APPROVED, AssignmentStatus.COMPLETED}
 
@@ -44,30 +44,26 @@ def recompute_status(a: Assignment) -> None:
     a.status = aggregate_status([x.status for x in a.assignees])
 
 
+def sync_status(db: Session, x: AssignmentAssignee) -> None:
+    """Re-derive one artist's status from records, then the assignment's aggregate."""
+    db.flush()
+    x.status = progress.derive_assignee_status(db, x)
+    if x.status in DONE and x.completed_at is None:
+        x.completed_at = utcnow()
+    elif x.status not in DONE:
+        x.completed_at = None
+    recompute_status(x.assignment)
+
+
 def is_overdue(a: Assignment, now: datetime | None = None) -> bool:
     return a.status not in DONE and ensure_utc(a.deadline) < (now or utcnow())
 
 
 # ---------------- serialization ----------------
 
-def _scene_counts(db: Session, assignee_ids: list[int]) -> dict[int, tuple[int, int]]:
-    """assignee_id -> (distinct scenes submitted, distinct scenes approved) across all revisions."""
-    if not assignee_ids:
-        return {}
-    base = (
-        select(Submission.assignee_id, func.count(func.distinct(SubmissionDeliverable.scene_id)))
-        .join(SubmissionDeliverable, SubmissionDeliverable.submission_id == Submission.id)
-        .where(Submission.assignee_id.in_(assignee_ids), SubmissionDeliverable.scene_id.is_not(None))
-        .group_by(Submission.assignee_id)
-    )
-    # A scene submitted across several revisions counts once.
-    submitted = dict(db.execute(base).all())
-    approved = dict(db.execute(base.where(SubmissionDeliverable.status == DeliverableStatus.APPROVED)).all())
-    return {aid: (submitted.get(aid, 0), approved.get(aid, 0)) for aid in assignee_ids}
-
-
 def to_out(db: Session, a: Assignment, now: datetime | None = None) -> AssignmentOut:
-    counts = _scene_counts(db, [x.id for x in a.assignees])
+    states = progress.scene_states(db, [x.id for x in a.assignees])
+    assigned_ids = {x.scene_id for x in a.scenes}
     scenes = sorted((x.scene for x in a.scenes), key=lambda s: (s.episode.episode_number, s.scene_number))
     return AssignmentOut(
         id=a.id, title=a.title, project_id=a.project_id, project_title=a.project.title, project_code=a.project.code,
@@ -81,7 +77,10 @@ def to_out(db: Session, a: Assignment, now: datetime | None = None) -> Assignmen
         assignees=[
             AssigneeOut(id=x.id, user_id=x.user_id, full_name=x.user.full_name, status=x.status,
                         reported_progress_pct=x.reported_progress_pct, progress_note=x.progress_note,
-                        scenes_submitted=counts.get(x.id, (0, 0))[0], scenes_approved=counts.get(x.id, (0, 0))[1])
+                        scenes_submitted=sum(1 for sid in states[x.id] if sid in assigned_ids),
+                        scenes_approved=sum(1 for sid, v in states[x.id].items()
+                                            if sid in assigned_ids and v == progress.APPROVED),
+                        scene_states={sid: v for sid, v in states[x.id].items() if sid in assigned_ids})
             for x in sorted(a.assignees, key=lambda x: x.user.full_name)
         ],
     )
@@ -257,3 +256,50 @@ def list_for(db: Session, actor: User, *, status: AssignmentStatus | None = None
     if overdue:
         q = q.where(Assignment.deadline < utcnow(), Assignment.status.not_in(list(DONE)))
     return list(db.scalars(q.order_by(Assignment.deadline.asc(), Assignment.id.desc()).limit(limit)))
+
+
+# ---------------- artist progress & completion ----------------
+
+def my_slot(db: Session, artist: User, assignment_id: int) -> AssignmentAssignee:
+    a = scope.get_assignment_for_view(db, artist, assignment_id)
+    x = next((x for x in a.assignees if x.user_id == artist.id), None)
+    if x is None:
+        raise Forbidden("You are not assigned to this assignment")
+    return x
+
+
+def update_progress(db: Session, artist: User, assignment_id: int, pct: int, note: str | None,
+                    ip: str | None) -> Assignment:
+    x = my_slot(db, artist, assignment_id)
+    if x.status in DONE:
+        raise Conflict("This assignment is already approved")
+    before = {"reported_progress_pct": x.reported_progress_pct, "progress_note": x.progress_note}
+    x.reported_progress_pct = pct
+    x.progress_note = note
+    if x.started_at is None:
+        x.started_at = utcnow()
+    sync_status(db, x)
+    audit.record(db, actor_id=artist.id, action="assignment.progress", entity_type="assignment_assignee",
+                 entity_id=x.id, before=before, after={"reported_progress_pct": pct, "progress_note": note}, ip=ip)
+    db.commit()
+    db.refresh(x.assignment)
+    return x.assignment
+
+
+def complete(db: Session, actor: User, assignment_id: int, ip: str | None) -> Assignment:
+    """Lead closes out an assignment once every artist's work is approved."""
+    a = scope.get_assignment_for_edit(db, actor, assignment_id)
+    if a.status == AssignmentStatus.COMPLETED:
+        raise Conflict("Assignment is already completed")
+    pending = [x.user.full_name for x in a.assignees if x.status not in DONE]
+    if pending:
+        raise Conflict("Not all work is approved yet: " + ", ".join(pending))
+    now = utcnow()
+    for x in a.assignees:
+        x.status = AssignmentStatus.COMPLETED
+        x.completed_at = x.completed_at or now
+    recompute_status(a)
+    audit.record(db, actor_id=actor.id, action="assignment.complete", entity_type="assignment", entity_id=a.id, ip=ip)
+    db.commit()
+    db.refresh(a)
+    return a

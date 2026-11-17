@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { api, errorMessage } from "./api"
 import type {
-  ArtistOverview, Assignment, AttendanceRecord, DailyCount, ProjectDetail, Project, Recipient, RosterRow,
+  ArtistOverview, Assignment, Submission, AttendanceRecord, DailyCount, ProjectDetail, Project, Recipient, RosterRow,
   StaffOverview, Team, TodayStatus, User,
 } from "./types"
 
@@ -22,6 +22,8 @@ export const keys = {
   attendanceSummary: (f?: object) => ["attendance", "summary", f ?? {}] as const,
   staffOverview: (f?: object) => ["dashboard", "overview", f ?? {}] as const,
   artistOverview: ["dashboard", "me"] as const,
+  submissions: (f?: object) => ["submissions", f ?? {}] as const,
+  submission: (id: number) => ["submission", id] as const,
 }
 
 type Q = Record<string, string | number | boolean | undefined | null>
@@ -47,6 +49,14 @@ export const useStaffOverview = (f: Q = {}) =>
   useQuery({ queryKey: keys.staffOverview(f), queryFn: () => api.get<StaffOverview>("/dashboard/overview", f), refetchInterval: 60_000 })
 export const useArtistOverview = () =>
   useQuery({ queryKey: keys.artistOverview, queryFn: () => api.get<ArtistOverview>("/dashboard/me"), refetchInterval: 60_000 })
+
+export const useSubmissions = (f: Q = {}, enabled = true) =>
+  useQuery({ queryKey: keys.submissions(f), queryFn: () => api.get<Submission[]>("/submissions", f), enabled })
+export const useSubmission = (id: number | undefined) =>
+  useQuery({ queryKey: keys.submission(id ?? 0), queryFn: () => api.get<Submission>(`/submissions/${id}`), enabled: !!id })
+
+/** Everything a submission or review can change. */
+export const WORK_KEYS = [["submissions"], ["submission"], ["assignments"], ["assignment"], ["dashboard"], ["project"]]
 
 /**
  * Mutation with toast feedback and cache invalidation.

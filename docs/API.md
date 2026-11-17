@@ -63,6 +63,20 @@ Interactive OpenAPI docs: http://localhost:8000/docs
 | PATCH | `/assignments/{id}` | admin, lead | Deadline, priority, text, `add_artist_ids`, `remove_artist_ids` |
 | DELETE | `/assignments/{id}` | admin, lead | Soft delete |
 
+## Progress, submissions & reviews
+| Method | Path | Roles | Notes |
+|---|---|---|---|
+| PUT | `/assignments/{id}/progress` | artist (assignee) | `{reported_progress_pct 0-100, progress_note?}`. Self-reported only; never marks work complete |
+| POST | `/assignments/{id}/complete` | admin, lead | Only when every artist's work is approved (409 otherwise) |
+| GET | `/submissions?status=&assignment_id=&artist_id=&project_id=` | any (scoped) | Pending queue (`status=pending_review`) is oldest-first |
+| POST | `/submissions` | artist | `{assignment_id, scene_ids[], work_description, output_links[], comments?, scenes_completed_count?}`. Any subset of open scenes (partial). 409 if a scene is already pending or approved |
+| GET | `/submissions/{id}` | any (scoped) | Deliverables with per-scene state, attachments, full review history, `previous_submission_id` |
+| POST | `/submissions/{id}/attachments` | artist (owner) | multipart `file`. Extension allow-list, size cap, content signature check. Only before review; max 10 |
+| GET | `/submissions/{id}/attachments/{att_id}` | any (scoped) | Download (`application/octet-stream`, `nosniff`) |
+| POST | `/submissions/{id}/review` | admin, lead (artist's team) | `{decision: approved\|rejected, feedback?, approved_scene_ids?}`. Rejecting, or approving only some scenes, requires feedback. 409 if already reviewed |
+
+**Derived state.** Each scene's state for an artist comes from the latest submission that included it: `submitted` (pending), `approved` or `rejected`. Assignee status is derived from these states. *Approved* means every assigned scene is approved. Artist-reported progress never affects it.
+
 ## Dashboard & meta
 | Method | Path | Roles | Notes |
 |---|---|---|---|

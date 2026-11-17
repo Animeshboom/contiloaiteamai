@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
   Building2, CalendarCheck, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
-  Settings, UserCircle2, Users, X,
+  History, Inbox, ListChecks, MessageSquareText, Send, Settings, UserCircle2, Users, X,
 } from "lucide-react"
 
 import { ChangePasswordDialog } from "@/components/change-password"
@@ -11,11 +11,12 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/misc"
 import { useAuth } from "@/lib/auth-context"
+import { useSubmissions } from "@/lib/queries"
 import { getStudioTimezone, initials, titleCase } from "@/lib/format"
 import type { Role } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean }
+interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: "reviews" }
 
 /** Only routes that are implemented appear here — no placeholder links. */
 export const NAV: Record<Role, NavItem[]> = {
@@ -32,6 +33,8 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/lead/projects", label: "Projects", icon: <Film /> },
     { to: "/lead/episodes", label: "Episodes & Scenes", icon: <Clapperboard /> },
     { to: "/lead/assignments", label: "Assignments", icon: <ClipboardList /> },
+    { to: "/lead/submissions", label: "Submissions", icon: <Inbox /> },
+    { to: "/lead/reviews", label: "Reviews", icon: <ListChecks />, badge: "reviews" },
     { to: "/lead/artists", label: "Artists", icon: <Users /> },
     { to: "/lead/settings", label: "Settings", icon: <Settings /> },
   ],
@@ -39,6 +42,9 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/artist", label: "My Dashboard", icon: <LayoutDashboard />, end: true },
     { to: "/artist/attendance", label: "My Attendance", icon: <CalendarCheck /> },
     { to: "/artist/assignments", label: "My Assignments", icon: <ClipboardList /> },
+    { to: "/artist/submit", label: "Submit Work", icon: <Send /> },
+    { to: "/artist/reviews", label: "My Reviews", icon: <MessageSquareText /> },
+    { to: "/artist/history", label: "Work History", icon: <History /> },
   ],
 }
 
@@ -59,6 +65,8 @@ function Brand() {
 }
 
 function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
+  const pending = useSubmissions({ status: "pending_review" }, role === "team_lead")
+  const counts = { reviews: pending.data?.length ?? 0 }
   return (
     <nav className="flex flex-col gap-0.5">
       {NAV[role].map((item) => (
@@ -76,6 +84,11 @@ function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void 
         >
           {item.icon}
           {item.label}
+          {item.badge && counts[item.badge] > 0 && (
+            <span className="ml-auto rounded-full bg-primary px-1.5 font-mono text-[10px] font-semibold text-primary-foreground" aria-label={`${counts[item.badge]} pending`}>
+              {counts[item.badge]}
+            </span>
+          )}
         </NavLink>
       ))}
     </nav>

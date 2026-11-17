@@ -50,9 +50,11 @@ class AssigneeOut(BaseModel):
     status: AssignmentStatus
     reported_progress_pct: int
     progress_note: str | None
-    # Filled from submission/review data in Phase 3; 0 until then.
+    # Derived from submission/review records (never from self-reported progress).
     scenes_submitted: int = 0
     scenes_approved: int = 0
+    # scene_id -> latest state: "submitted" (pending review) | "approved" | "rejected"
+    scene_states: dict[int, str] = {}
 
 
 class AssignmentOut(BaseModel):

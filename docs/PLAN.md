@@ -33,10 +33,14 @@
 - [x] Dashboards computed from DB (no hardcoded stats)
 - [x] 74 backend tests (SQLite + Postgres), 9 frontend tests, scripted API walkthrough, headless-browser UI walkthrough
 
-## Phase 3 — Artist workflow
-- [ ] Artist dashboard, progress updates
-- [ ] Submissions (partial, links, validated file uploads), revision history
-- [ ] Review dashboard: approve (per scene) / reject with required feedback; resubmission cycle
+## Phase 3 — Artist workflow ✅
+- [x] Artist progress updates (self-reported, kept separate from submitted/approved state)
+- [x] Submissions: partial (any subset of open scenes), multiple non-overlapping pending, deliverable-only, links (http/https only), secure attachments (allow-list, streaming size cap, magic-byte check, random names, scoped download)
+- [x] Immutable revision history: a resubmission is a new row linked to the rejected submission; append-only reviews
+- [x] Review queue: approve all or selected scenes; feedback required for any rejection; double review blocked (row lock)
+- [x] Derived per-scene and per-artist status; lead "Mark completed"
+- [x] UI: Submit Work, My Reviews, Work History (artist); Submissions, Reviews with pending badge (lead); scene-state grid in assignment detail
+- [x] 93 backend tests (SQLite + Postgres), 11 frontend tests, full browser walkthrough (submit → partial approve → revise → approve → complete)
 
 ## Phase 4 — Notifications & Gmail MCP
 - [ ] In-app notifications (deduplicated), deadline-approaching job

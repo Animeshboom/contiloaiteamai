@@ -2,7 +2,7 @@
 
 Artist attendance, task assignment, quality review and AI-assisted end-of-day production reporting for an AI film studio.
 
-> **Status:** Phases 1–2 complete (foundation, employees/teams, attendance, projects/episodes/scenes, assignments, role-based UI). See [docs/PLAN.md](docs/PLAN.md).
+> **Status:** Phases 1–3 complete (foundation, workforce management, artist submissions and lead reviews). Next: notifications and Gmail MCP. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Project structure
 
@@ -68,7 +68,7 @@ cd backend
 TEST_DATABASE_URL=postgresql+psycopg://studiotrack:studiotrack@localhost:5434/studiotrack_test \
   .venv/Scripts/python -m pytest                         # same suite on Postgres
 
-cd ../frontend && npm test                               # Vitest: timezone helpers, login flow
+cd ../frontend && npm test                               # Vitest: timezone helpers, login, review panel
 ```
 
 ## Demo accounts (demo data only)
@@ -96,4 +96,5 @@ The full endpoint reference is in [docs/API.md](docs/API.md). The OpenAPI UI is 
 - Every login, failed login and password change is written to `audit_logs`.
 - Every service call is scoped: team leads only see and act on their own teams' people and projects; artists only their own work. Out-of-scope IDs return 404.
 - The frontend's role checks are UX only; every permission is enforced by the API and covered by tests.
+- Uploads are checked against an extension allow-list and a size cap, and their content must match the extension. They're stored under random names outside any static path and downloaded only through scoped, authenticated endpoints with `nosniff`.
 - The JWT is kept in `localStorage` for this prototype. For production, consider httpOnly cookies plus CSRF protection.

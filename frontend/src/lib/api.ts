@@ -43,18 +43,23 @@ function buildUrl(path: string, query?: Query) {
   return url.pathname + url.search
 }
 
-async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
+async function send(method: string, path: string, body?: BodyInit, json = false, query?: Query): Promise<Response> {
   const headers: Record<string, string> = {}
-  if (body !== undefined) headers["Content-Type"] = "application/json"
+  if (json) headers["Content-Type"] = "application/json"
   if (token) headers.Authorization = `Bearer ${token}`
-
-  let res: Response
   try {
-    res = await fetch(buildUrl(path, query), { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    return await fetch(buildUrl(path, query), { method, headers, body })
   } catch {
     throw new ApiError(0, "network", "Cannot reach the StudioTrack server. Is the API running?")
   }
+}
 
+async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
+  const res = await send(method, path, body === undefined ? undefined : JSON.stringify(body), body !== undefined, query)
+  return parse<T>(res, path)
+}
+
+async function parse<T>(res: Response, path: string): Promise<T> {
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -75,6 +80,25 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body ?? {}),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body ?? {}),
   del: <T = void>(path: string) => request<T>("DELETE", path),
+  /** multipart upload of a single file under the field name "file" */
+  upload: async <T>(path: string, file: File): Promise<T> => {
+    const form = new FormData()
+    form.append("file", file)
+    return parse<T>(await send("POST", path, form), path)
+  },
+  /** authenticated download -> browser save dialog */
+  download: async (path: string, filename: string): Promise<void> => {
+    const res = await send("GET", path)
+    if (!res.ok) await parse(res, path)
+    const url = URL.createObjectURL(await res.blob())
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
 }
 
 export function errorMessage(e: unknown): string {
