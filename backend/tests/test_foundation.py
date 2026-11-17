@@ -1,0 +1,64 @@
+from datetime import date, timezone
+
+import pytest
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+
+from app.core.config import get_settings
+from app.core.timeutils import studio_day_bounds_utc, studio_eod
+from app.models import Episode, Role, Scene, Team, User
+from app.services.seed import seed_demo
+
+
+def test_health(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200 and r.json()["status"] == "ok"
+
+
+def test_seed_is_idempotent(db):
+    before = db.scalar(select(func.count(User.id)))
+    seed_demo(db)
+    seed_demo(db)
+    assert db.scalar(select(func.count(User.id))) == before == 8
+    assert db.scalar(select(func.count(Role.id))) == 3
+
+
+def test_seed_links_team_leads(db):
+    team = db.scalar(select(Team).where(Team.name == "Animation Unit (Demo)"))
+    assert team.lead.email == "lead.anim@studiotrack.demo"
+    assert {m.email for m in team.members} >= {"artist.arjun@studiotrack.demo", "artist.sara@studiotrack.demo"}
+
+
+def test_unique_scene_number_per_episode(db):
+    ep = db.scalars(select(Episode)).first()
+    db.add(Scene(episode_id=ep.id, scene_number=1))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+
+
+def test_studio_day_bounds_use_configured_timezone():
+    tz = get_settings().tz
+    start, end = studio_day_bounds_utc(date(2026, 3, 10))
+    assert start.tzinfo == timezone.utc
+    assert start.astimezone(tz).hour == 0 and end.astimezone(tz).hour == 23
+    eod = studio_eod(date(2026, 3, 10))
+    assert eod.astimezone(tz).hour == get_settings().eod_deadline_hour
+
+
+def test_unknown_routes_and_errors_do_not_leak_internals(client):
+    r = client.get("/api/v1/does-not-exist")
+    assert r.status_code == 404
+    assert "Traceback" not in r.text
+
+
+def test_cors_allows_frontend_origin(client):
+    r = client.options("/api/v1/auth/login", headers={
+        "Origin": "http://localhost:5173", "Access-Control-Request-Method": "POST",
+    })
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    r = client.options("/api/v1/auth/login", headers={
+        "Origin": "http://evil.example", "Access-Control-Request-Method": "POST",
+    })
+    assert "access-control-allow-origin" not in r.headers
+

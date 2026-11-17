@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: studiotrack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-studiotrack}
+      POSTGRES_DB: studiotrack
+    ports:
+      - "5434:5432"   # 5434 on the host to avoid clashing with a local Postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studiotrack -d studiotrack"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
