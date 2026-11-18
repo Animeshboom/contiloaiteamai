@@ -64,6 +64,11 @@ class DailyReport(TimestampMixin, Base):
     metrics: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)  # deterministic snapshot
     ai_summary: Mapped[str | None] = mapped_column(Text)  # AI narrative, as generated
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Structured narrative {summary, highlights[], concerns[]} and how it was produced:
+    # ai_status: generated | template | rejected_unverified_numbers | ai_error | refused
+    narrative: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    ai_status: Mapped[str | None] = mapped_column(String(40))
+    ai_note: Mapped[str | None] = mapped_column(Text)
     subject: Mapped[str] = mapped_column(String(300), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)  # final, team-lead-editable email body
     status: Mapped[ReportStatus] = mapped_column(
@@ -73,6 +78,8 @@ class DailyReport(TimestampMixin, Base):
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # HMAC issued at approval over (report, approver, time, exact recipients); verified by the MCP server.
+    approval_token: Mapped[str | None] = mapped_column(String(64))
     sent_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     delivery_status: Mapped[str | None] = mapped_column(String(40))

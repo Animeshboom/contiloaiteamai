@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.api.routes import assignments, attendance, auth, dashboard, notifications, org, production, submissions
+from app.api.routes import assignments, attendance, auth, dashboard, notifications, org, production, reports, submissions
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import AppError
@@ -92,6 +92,7 @@ app.include_router(assignments.router, prefix=API)
 app.include_router(dashboard.router, prefix=API)
 app.include_router(submissions.router, prefix=API)
 app.include_router(notifications.router, prefix=API)
+app.include_router(reports.router, prefix=API)
 
 
 @app.get("/api/health", tags=["meta"])

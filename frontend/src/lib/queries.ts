@@ -3,7 +3,7 @@ import { toast } from "sonner"
 
 import { api, errorMessage } from "./api"
 import type {
-  AppNotification, ArtistOverview, Assignment, EmailLogEntry, Submission, AttendanceRecord, DailyCount, ProjectDetail, Project, Recipient, RosterRow,
+  AppNotification, ArtistOverview, Assignment, EmailLogEntry, Report, ReportListItem, ReportMetrics, Submission, AttendanceRecord, DailyCount, ProjectDetail, Project, Recipient, RosterRow,
   StaffOverview, Team, TodayStatus, User,
 } from "./types"
 
@@ -27,6 +27,9 @@ export const keys = {
   notifications: (f?: object) => ["notifications", f ?? {}] as const,
   unread: ["notifications", "unread"] as const,
   emailLogs: (f?: object) => ["email-logs", f ?? {}] as const,
+  reports: (f?: object) => ["reports", f ?? {}] as const,
+  report: (id: number) => ["report", id] as const,
+  reportMetrics: (f?: object) => ["report-metrics", f ?? {}] as const,
 }
 
 type Q = Record<string, string | number | boolean | undefined | null>
@@ -64,6 +67,13 @@ export const useUnreadCount = () =>
   useQuery({ queryKey: keys.unread, queryFn: () => api.get<{ unread: number }>("/notifications/unread-count"), refetchInterval: 30_000 })
 export const useEmailLogs = (f: Q = {}, enabled = true) =>
   useQuery({ queryKey: keys.emailLogs(f), queryFn: () => api.get<EmailLogEntry[]>("/email-logs", f), enabled, refetchInterval: 15_000 })
+
+export const useReports = (f: Q = {}) =>
+  useQuery({ queryKey: keys.reports(f), queryFn: () => api.get<ReportListItem[]>("/reports", f) })
+export const useReport = (id: number | undefined) =>
+  useQuery({ queryKey: keys.report(id ?? 0), queryFn: () => api.get<Report>(`/reports/${id}`), enabled: !!id })
+export const useReportMetrics = (f: Q = {}) =>
+  useQuery({ queryKey: keys.reportMetrics(f), queryFn: () => api.get<ReportMetrics>("/reports/metrics", f) })
 
 /** Everything a submission or review can change. */
 export const WORK_KEYS = [["submissions"], ["submission"], ["assignments"], ["assignment"], ["dashboard"], ["project"], ["notifications"]]

@@ -168,3 +168,47 @@ export interface EmailLogEntry {
   entity_type: string | null; entity_id: number | null
   created_at: string; last_attempt_at: string | null; next_attempt_at: string | null; sent_at: string | null
 }
+
+export type ReportStatus = "draft" | "approved" | "sent" | "failed"
+export type AiStatus = "generated" | "template" | "rejected_unverified_numbers" | "ai_error" | "refused"
+
+export interface SlotRow { assignment_id: number; title: string; project: string; artist: string; deadline: string; status: AssignmentStatus; reported_progress_pct: number }
+
+export interface ArtistMetrics {
+  name: string; job_title: string | null; attendance: AttendanceStatus | "not_checked_in"
+  check_in: string | null; check_out: string | null; worked_minutes: number | null
+  active_assignments: number; scenes_assigned_today: number; scenes_submitted: number; scenes_approved: number
+  scenes_rejected: number; pending_reviews: number; delayed_assignments: number; late_submissions: number
+  reported_progress_pct: number | null
+}
+
+export interface ReportMetrics {
+  report_date: string; generated_at: string; as_of: string
+  scope: { teams: string[]; filters: Record<string, string> }
+  totals: {
+    team_members: number; present: number; half_day: number; on_leave: number; absent: number; not_checked_in: number
+    attendance_rate_pct: number | null; projects_worked_on: number; assignments_distributed: number; assignments_active: number
+    scenes_assigned: number; scenes_submitted: number; deliverables_submitted: number; submissions: number
+    scenes_approved: number; scenes_rejected: number; approval_rate_pct: number | null; pending_reviews: number
+    incomplete_assignments: number; delayed_assignments: number; late_submissions: number
+  }
+  attendance_by_status: Record<string, string[]>
+  projects: { code: string; title: string; assignments_active: number; assignments_distributed: number; scenes_submitted: number; scenes_approved: number; scenes_rejected: number }[]
+  artists: ArtistMetrics[]
+  incomplete_assignments: SlotRow[]
+  delayed_assignments: SlotRow[]
+  remarks: string[]
+}
+
+export interface ReportListItem {
+  id: number; report_date: string; status: ReportStatus; subject: string; recipients: string[]
+  ai_status: AiStatus | null; created_by_name: string; created_at: string; approved_at: string | null
+  sent_at: string | null; sent_by_name: string | null; delivery_status: string | null; filters: Record<string, number>
+}
+
+export interface Report extends ReportListItem {
+  metrics: ReportMetrics
+  narrative: { summary: string; highlights: string[]; concerns: string[] }
+  ai_note: string | null; body: string; approved_by_name: string | null
+  gmail_message_id: string | null; gmail_draft_id: string | null; email_error: string | null
+}

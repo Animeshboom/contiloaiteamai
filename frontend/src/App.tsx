@@ -17,6 +17,8 @@ import NotificationsPage from "@/pages/notifications"
 import MyAttendancePage from "@/pages/my-attendance"
 import ProjectDetailPage, { EpisodesScenesPage } from "@/pages/project-detail"
 import ProjectsPage from "@/pages/projects"
+import ReportDetailPage from "@/pages/report-detail"
+import ReportsPage from "@/pages/reports"
 import ReviewsPage from "@/pages/reviews"
 import SubmissionsPage from "@/pages/submissions"
 import SubmitWorkPage from "@/pages/submit-work"
@@ -64,6 +66,8 @@ export default function App() {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="teams" element={<TeamsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/:id" element={<ReportDetailPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
@@ -78,6 +82,8 @@ export default function App() {
         <Route path="submissions" element={<SubmissionsPage mode="lead" />} />
         <Route path="reviews" element={<ReviewsPage />} />
         <Route path="artists" element={<ArtistsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/:id" element={<ReportDetailPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />

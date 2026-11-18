@@ -2,7 +2,7 @@
 
 Artist attendance, task assignment, quality review and AI-assisted end-of-day production reporting for an AI film studio.
 
-> **Status:** Phases 1–4 complete (foundation, workforce management, submissions and reviews, notifications and the Gmail MCP server). Next: AI end-of-day reporting. See [docs/PLAN.md](docs/PLAN.md).
+> **Status:** Phases 1–5 complete. All 17 Definition-of-Done steps pass end to end. Next: Phase 6 (Docker, polish, security review). See [docs/PLAN.md](docs/PLAN.md).
 
 ## Project structure
 
@@ -82,6 +82,10 @@ cd ../frontend && npm test                               # Vitest: timezone help
 | Artist (Compositing) | artist.nina@ / artist.dev@studiotrack.demo | `Artist@12345` |
 
 Demo projects: **Neon Monsoon (Demo)**, a series with 2 episodes and 11 scenes, and **The Last Letter (Demo)**, a short film with 1 episode and 8 scenes.
+
+## AI reports (Claude)
+
+End-of-day figures are always computed from the database. Claude only writes the summary prose, and any figure it writes that doesn't appear in the records causes its text to be discarded. To enable it, set `ANTHROPIC_API_KEY` in `.env`. The model defaults to `claude-opus-5-5` and can be changed with `ANTHROPIC_MODEL`. Without a key, reports use a deterministic template.
 
 ## Email
 

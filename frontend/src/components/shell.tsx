@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
-  Bell, Building2, CalendarCheck, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
+  Bell, Building2, CalendarCheck, FileText, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
   History, Inbox, ListChecks, MessageSquareText, Send, Settings, UserCircle2, Users, X,
 } from "lucide-react"
 
@@ -26,6 +26,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/admin/employees", label: "Employees", icon: <Users /> },
     { to: "/admin/projects", label: "Projects", icon: <Film /> },
     { to: "/admin/teams", label: "Teams", icon: <Building2 /> },
+    { to: "/admin/reports", label: "Reports", icon: <FileText /> },
     { to: "/admin/settings", label: "Settings", icon: <Settings /> },
   ],
   team_lead: [
@@ -37,6 +38,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/lead/submissions", label: "Submissions", icon: <Inbox /> },
     { to: "/lead/reviews", label: "Reviews", icon: <ListChecks />, badge: "reviews" },
     { to: "/lead/artists", label: "Artists", icon: <Users /> },
+    { to: "/lead/reports", label: "EOD Reports", icon: <FileText /> },
     { to: "/lead/notifications", label: "Notifications", icon: <Bell /> },
     { to: "/lead/settings", label: "Settings", icon: <Settings /> },
   ],

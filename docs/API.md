@@ -89,6 +89,20 @@ Interactive OpenAPI docs: http://localhost:8000/docs
 
 Events that notify: a new assignment (artist; in-app and email), a submission received (team leads; in-app), an approval (artist; in-app and email), a revision request (artist; in-app and email with feedback), and a deadline within `DEADLINE_REMINDER_HOURS` (artist; in-app and email). Every event has a unique dedupe or idempotency key, so retried requests or jobs never duplicate. See [GMAIL_SETUP.md](GMAIL_SETUP.md).
 
+## End-of-day reports
+| Method | Path | Roles | Notes |
+|---|---|---|---|
+| GET | `/reports/metrics?report_date=&project_id=&episode_id=&artist_id=&team_id=` | admin, lead | Live deterministic metrics (nothing saved, no AI) |
+| POST | `/reports` | admin, lead (10/min) | `{report_date?, project_id?, episode_id?, artist_id?, team_id? (admin), use_ai}`. Snapshots metrics and drafts the narrative. Returns a **draft** |
+| GET | `/reports` · `/reports/{id}` | admin, lead (own team) | History, and full report with metrics snapshot, narrative and body |
+| PATCH | `/reports/{id}` | admin, lead | Edit subject, body or recipients. **Draft only** |
+| POST | `/reports/{id}/approve` | admin, lead | `{recipients}` must be active authorized recipients. Issues an HMAC approval token over (report, approver, time, exact recipients) |
+| POST | `/reports/{id}/revoke` | admin, lead | Approved or failed → draft (invalidates the token) |
+| POST | `/reports/{id}/send` | admin, lead (10/min) | Sends an **approved** report via MCP `send_daily_report`. One delivery per approval; 409 if already sent |
+| POST | `/reports/{id}/gmail-draft` | admin, lead | Optional: puts the current text in Gmail drafts via `create_daily_report_draft`. Never sends |
+
+**AI boundary.** Every figure comes from `report_metrics.compute` (SQL plus arithmetic) and is stored on the report as `metrics`. Claude (`claude-opus-5-5`, structured output, server-side refusal fallback enabled) receives only that snapshot and returns `{summary, highlights, concerns}`. A number guard discards any narrative containing a figure or time that isn't in the snapshot. Without an API key, or on errors or refusals, a deterministic template is used, and `ai_status`/`ai_note` record which.
+
 ## Dashboard & meta
 | Method | Path | Roles | Notes |
 |---|---|---|---|

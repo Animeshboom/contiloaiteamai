@@ -52,10 +52,13 @@
 - [x] Mock delivery (.eml outbox) when Gmail isn't configured; admin email delivery log with retry
 - [x] 124 backend tests (SQLite + Postgres), including protocol-level MCP tests and a real spawned-subprocess test; browser walkthrough through the real MCP path
 
-## Phase 5 — AI reporting
-- [ ] Deterministic EOD metrics service (filters: project/episode/artist)
-- [ ] Claude narrative + email composition (template fallback without an API key)
-- [ ] Preview/edit → approve → send; report history
+## Phase 5 — AI reporting ✅
+- [x] Deterministic EOD metrics: attendance, assignments distributed, scenes assigned/submitted/approved/rejected, pending reviews at the cutoff, incomplete and delayed work (historically accurate via `completed_at`), per-artist and per-project rows, rule-based remarks; filters for project, episode, artist and team
+- [x] Claude narrative via the Anthropic SDK (`claude-opus-5-5`, structured output, effort medium, server-side refusal fallback); only the metrics snapshot is sent (no free text)
+- [x] Number guard: narratives with figures or times not in the snapshot are discarded; template fallback when there's no key, an error or a refusal
+- [x] EOD dashboard with live metrics, generate, edit, preview, authorized recipients, Approve & send (confirmed), Gmail draft, revoke, history (migration 0003)
+- [x] Approval token issued at approval time; the MCP server verifies it and sends DB-stored content; tampering is refused
+- [x] 137 backend tests (SQLite + Postgres), 12 frontend tests; all 17 Definition-of-Done steps pass in a real browser
 
 ## Phase 6 — Finalization
 - [ ] UI polish, frontend tests, security review, Dockerfiles for api/frontend/mcp, full README + API docs
