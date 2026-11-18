@@ -5,16 +5,18 @@ import { defineConfig } from "vite"
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // Stable vendor chunks: cached across deploys, and charts load only on pages that use them.
-        manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
-          query: ["@tanstack/react-query"],
-          charts: ["recharts"],
-          radix: ["@radix-ui/react-dialog", "@radix-ui/react-alert-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs", "@radix-ui/react-checkbox", "@radix-ui/react-label", "@radix-ui/react-slot"],
+        codeSplitting: {
+          groups: [
+            { name: "react", test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/ },
+            { name: "query", test: /[\\/]node_modules[\\/]@tanstack[\\/]/ },
+            { name: "charts", test: /[\\/]node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor)[\\/]/ },
+            { name: "radix", test: /[\\/]node_modules[\\/]@radix-ui[\\/]/ },
+          ],
         },
       },
     },
