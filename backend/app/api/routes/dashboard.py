@@ -20,6 +20,7 @@ def config(_: User = Depends(get_current_user)):
         "eod_deadline_hour": s.eod_deadline_hour,
         "studio_today": studio_today(),
         "email_provider": s.email_provider,
+        "gmail_backend": s.gmail_backend,
         "ai_enabled": bool(s.anthropic_api_key),
         "max_upload_mb": s.max_upload_mb,
     }

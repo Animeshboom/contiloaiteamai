@@ -2,7 +2,7 @@
 
 Artist attendance, task assignment, quality review and AI-assisted end-of-day production reporting for an AI film studio.
 
-> **Status:** Phases 1–3 complete (foundation, workforce management, artist submissions and lead reviews). Next: notifications and Gmail MCP. See [docs/PLAN.md](docs/PLAN.md).
+> **Status:** Phases 1–4 complete (foundation, workforce management, submissions and reviews, notifications and the Gmail MCP server). Next: AI end-of-day reporting. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Project structure
 
@@ -24,7 +24,7 @@ StudioTrack-AI/
 │   └── tests/                 # pytest
 ├── frontend/                  # React + TS + Vite + Tailwind v4 + shadcn/ui + React Query + Recharts
 │   └── src/{pages, components, components/ui, lib}
-└── mcp_servers/gmail/         # Gmail MCP server (Python MCP SDK)           (Phase 4)
+└── mcp_servers/gmail_mcp/     # Gmail MCP server (Python MCP SDK). See docs/GMAIL_SETUP.md
 ```
 
 ## Prerequisites
@@ -82,6 +82,10 @@ cd ../frontend && npm test                               # Vitest: timezone help
 | Artist (Compositing) | artist.nina@ / artist.dev@studiotrack.demo | `Artist@12345` |
 
 Demo projects: **Neon Monsoon (Demo)**, a series with 2 episodes and 11 scenes, and **The Last Letter (Demo)**, a short film with 1 episode and 8 scenes.
+
+## Email
+
+Email goes through the app's own **Gmail MCP server**. Out of the box it uses a mock Gmail backend that writes `.eml` files to `backend/mail_outbox/`, so no Google account is needed. To connect real Gmail (OAuth 2.0, `gmail.compose` scope only), follow [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md).
 
 ## API
 

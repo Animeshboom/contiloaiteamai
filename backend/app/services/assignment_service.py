@@ -16,7 +16,7 @@ from app.models import (
     ProjectStatus, RoleName, Scene, Submission, User,
 )
 from app.schemas.assignments import AssigneeOut, AssignmentCreate, AssignmentOut, AssignmentUpdate, SceneRef
-from app.services import audit, progress, scope
+from app.services import audit, notification_service, progress, scope
 
 DONE = {AssignmentStatus.APPROVED, AssignmentStatus.COMPLETED}
 
@@ -184,11 +184,8 @@ def create(db: Session, actor: User, data: AssignmentCreate, ip: str | None) -> 
 
 
 def _notify_new_assignment(db: Session, a: Assignment, artists: list[User]) -> None:
-    """Hook for the notification service (Phase 4)."""
-    try:
-        from app.services import notification_service  # noqa: PLC0415
-    except ImportError:
-        return
+    db.flush()
+    db.refresh(a)
     for u in artists:
         notification_service.assignment_created(db, a, u)
 

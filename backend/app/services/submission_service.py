@@ -17,7 +17,7 @@ from app.models import (
 from app.schemas.submissions import (
     AttachmentOut, DeliverableOut, ReviewCreate, ReviewOut, SubmissionCreate, SubmissionOut,
 )
-from app.services import assignment_service, audit, files, progress, scope
+from app.services import assignment_service, audit, files, notification_service, progress, scope
 
 MAX_ATTACHMENTS = 10
 
@@ -248,10 +248,6 @@ def review(db: Session, reviewer: User, submission_id: int, data: ReviewCreate, 
 
 
 def _notify(event: str, db: Session, sub: Submission) -> None:
-    """Hook for the notification service (Phase 4)."""
-    try:
-        from app.services import notification_service  # noqa: PLC0415
-    except ImportError:
-        return
+    db.flush()
+    db.refresh(sub)
     getattr(notification_service, event)(db, sub)
-

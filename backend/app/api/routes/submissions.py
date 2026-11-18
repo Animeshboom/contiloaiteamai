@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,7 @@ from app.core.rate_limit import limiter
 from app.models import SubmissionStatus, User
 from app.schemas.assignments import AssignmentOut
 from app.schemas.submissions import ProgressUpdate, ReviewCreate, SubmissionCreate, SubmissionOut
-from app.services import assignment_service, files
+from app.services import assignment_service, email_service, files
 from app.services import submission_service as svc
 
 router = APIRouter(tags=["submissions & reviews"])
@@ -46,9 +46,11 @@ def list_submissions(
 
 @router.post("/submissions", response_model=SubmissionOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
-def create_submission(request: Request, body: SubmissionCreate, user: User = Depends(require_artist),
-                      db: Session = Depends(get_db)):
-    return svc.to_out(db, svc.create(db, user, body, client_ip(request)))
+def create_submission(request: Request, body: SubmissionCreate, background: BackgroundTasks,
+                      user: User = Depends(require_artist), db: Session = Depends(get_db)):
+    out = svc.to_out(db, svc.create(db, user, body, client_ip(request)))
+    background.add_task(email_service.dispatch_pending)
+    return out
 
 
 @router.get("/submissions/{submission_id}", response_model=SubmissionOut)
@@ -79,7 +81,9 @@ def download_attachment(submission_id: int, attachment_id: int, user: User = Dep
 
 
 @router.post("/submissions/{submission_id}/review", response_model=SubmissionOut)
-def review_submission(submission_id: int, body: ReviewCreate, request: Request,
+def review_submission(submission_id: int, body: ReviewCreate, request: Request, background: BackgroundTasks,
                       user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
     """Approve (all or selected scenes) or reject with feedback. Each review is a new, permanent record."""
-    return svc.to_out(db, svc.review(db, user, submission_id, body, client_ip(request)))
+    out = svc.to_out(db, svc.review(db, user, submission_id, body, client_ip(request)))
+    background.add_task(email_service.dispatch_pending)
+    return out

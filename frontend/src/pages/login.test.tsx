@@ -12,7 +12,7 @@ const lead = {
   job_title: "Animation Lead", team: { id: 1, name: "Animation Unit (Demo)" }, is_active: true,
   last_login_at: null, created_at: "2026-11-01T00:00:00Z",
 }
-const config = { studio_timezone: "Asia/Kolkata", eod_deadline_hour: 19, studio_today: "2026-11-18", email_provider: "mock", ai_enabled: false, max_upload_mb: 25 }
+const config = { studio_timezone: "Asia/Kolkata", eod_deadline_hour: 19, studio_today: "2026-11-18", email_provider: "mock", gmail_backend: "mock", ai_enabled: false, max_upload_mb: 25 }
 
 function json(status: number, body: unknown) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }))

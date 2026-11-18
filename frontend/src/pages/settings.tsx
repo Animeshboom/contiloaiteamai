@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react"
 import { KeyRound, Mail, Plus } from "lucide-react"
 
 import { ChangePasswordDialog } from "@/components/change-password"
+import { EmailLogCard } from "@/components/email-log"
 import { EmptyState, LoadingRows, PageHeader } from "@/components/common"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,12 +34,16 @@ export default function SettingsPage() {
             <CardContent className="grid gap-3 text-sm">
               <Row k="Timezone" v={config?.studio_timezone} />
               <Row k="Default EOD deadline" v={config ? `${String(config.eod_deadline_hour).padStart(2, "0")}:00` : undefined} />
-              <Row k="Email delivery" v={config ? (config.email_provider === "mock" ? "Mock provider (development)" : "Gmail via MCP") : undefined} />
+              <Row k="Email delivery" v={config ? (config.email_provider === "mcp" ? "Gmail MCP server" : "In-process (development)") : undefined} />
+              <Row k="Gmail backend" v={config ? (config.gmail_backend === "gmail" ? "Gmail API (OAuth)" : "Mock — writes .eml files") : undefined} />
               <Row k="AI report narrative" v={config ? (config.ai_enabled ? "Claude enabled" : "Not configured (template fallback)") : undefined} />
             </CardContent>
           </Card>
         </div>
-        <div className="lg:col-span-2"><RecipientsCard editable={isAdmin} /></div>
+        <div className="space-y-6 lg:col-span-2">
+          <RecipientsCard editable={isAdmin} />
+          {isAdmin && <EmailLogCard />}
+        </div>
       </div>
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </>
@@ -86,7 +91,7 @@ function RecipientsCard({ editable }: { editable: boolean }) {
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.name}</TableCell>
                   <TableCell className="font-mono text-xs">{r.email}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{titleCase(r.purpose)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.purpose === "eod_report" ? "EOD report" : titleCase(r.purpose)}</TableCell>
                   <TableCell>{r.is_active ? <Badge tone="green" dot>Active</Badge> : <Badge>Disabled</Badge>}</TableCell>
                   {editable && (
                     <TableCell className="text-right">

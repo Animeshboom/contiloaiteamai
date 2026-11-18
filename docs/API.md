@@ -77,6 +77,18 @@ Interactive OpenAPI docs: http://localhost:8000/docs
 
 **Derived state.** Each scene's state for an artist comes from the latest submission that included it: `submitted` (pending), `approved` or `rejected`. Assignee status is derived from these states. *Approved* means every assigned scene is approved. Artist-reported progress never affects it.
 
+## Notifications & email
+| Method | Path | Roles | Notes |
+|---|---|---|---|
+| GET | `/notifications?unread_only=&limit=` | any | The caller's own notifications, newest first |
+| GET | `/notifications/unread-count` | any | `{unread}` |
+| POST | `/notifications/{id}/read` | any (own only) | 404 for other users' notifications |
+| POST | `/notifications/read-all` | any | `{updated}` |
+| GET | `/email-logs?status=` | admin | Delivery attempts via the Gmail MCP integration (no message bodies) |
+| POST | `/email-logs/{id}/retry` | admin | Re-queues a **failed** email and delivers it now. Blocked emails stay blocked |
+
+Events that notify: a new assignment (artist; in-app and email), a submission received (team leads; in-app), an approval (artist; in-app and email), a revision request (artist; in-app and email with feedback), and a deadline within `DEADLINE_REMINDER_HOURS` (artist; in-app and email). Every event has a unique dedupe or idempotency key, so retried requests or jobs never duplicate. See [GMAIL_SETUP.md](GMAIL_SETUP.md).
+
 ## Dashboard & meta
 | Method | Path | Roles | Notes |
 |---|---|---|---|

@@ -10,3 +10,4 @@ frontend/dist/
 secrets/
 gmail_token*.json
 client_secret*.json
+mail_outbox/

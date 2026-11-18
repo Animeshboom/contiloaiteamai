@@ -150,6 +150,21 @@ export interface AppConfig {
   eod_deadline_hour: number
   studio_today: string
   email_provider: string
+  gmail_backend: string
   ai_enabled: boolean
   max_upload_mb: number
+}
+
+export interface AppNotification {
+  id: number; event_type: string; title: string; message: string; link: string | null
+  entity_type: string | null; entity_id: number | null; read_at: string | null; created_at: string
+}
+
+export type EmailStatus = "pending" | "sent" | "drafted" | "failed" | "blocked"
+
+export interface EmailLogEntry {
+  id: number; tool_name: string; provider: string; recipients: string[]; subject: string; status: EmailStatus
+  provider_message_id: string | null; error: string | null; attempts: number
+  entity_type: string | null; entity_id: number | null
+  created_at: string; last_attempt_at: string | null; next_attempt_at: string | null; sent_at: string | null
 }

@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -9,7 +9,7 @@ from app.core.timeutils import utcnow
 from app.models import AssignmentStatus, Priority, User
 from app.schemas.assignments import AssignmentCreate, AssignmentOut, AssignmentUpdate
 from app.services import assignment_service as svc
-from app.services import scope
+from app.services import email_service, scope
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
@@ -33,9 +33,11 @@ def list_assignments(
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)
-def create_assignment(body: AssignmentCreate, request: Request, user: User = Depends(require_lead_or_admin),
-                      db: Session = Depends(get_db)):
-    return svc.to_out(db, svc.create(db, user, body, client_ip(request)))
+def create_assignment(body: AssignmentCreate, request: Request, background: BackgroundTasks,
+                      user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
+    out = svc.to_out(db, svc.create(db, user, body, client_ip(request)))
+    background.add_task(email_service.dispatch_pending)  # email after the response is sent
+    return out
 
 
 @router.get("/{assignment_id}", response_model=AssignmentOut)
@@ -44,9 +46,11 @@ def get_assignment(assignment_id: int, user: User = Depends(get_current_user), d
 
 
 @router.patch("/{assignment_id}", response_model=AssignmentOut)
-def update_assignment(assignment_id: int, body: AssignmentUpdate, request: Request,
+def update_assignment(assignment_id: int, body: AssignmentUpdate, request: Request, background: BackgroundTasks,
                       user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
-    return svc.to_out(db, svc.update(db, user, assignment_id, body, client_ip(request)))
+    out = svc.to_out(db, svc.update(db, user, assignment_id, body, client_ip(request)))
+    background.add_task(email_service.dispatch_pending)
+    return out
 
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)

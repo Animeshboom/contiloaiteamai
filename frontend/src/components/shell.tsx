@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
-  Building2, CalendarCheck, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
+  Bell, Building2, CalendarCheck, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
   History, Inbox, ListChecks, MessageSquareText, Send, Settings, UserCircle2, Users, X,
 } from "lucide-react"
 
 import { ChangePasswordDialog } from "@/components/change-password"
+import { NotificationBell } from "@/components/notifications"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -36,6 +37,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/lead/submissions", label: "Submissions", icon: <Inbox /> },
     { to: "/lead/reviews", label: "Reviews", icon: <ListChecks />, badge: "reviews" },
     { to: "/lead/artists", label: "Artists", icon: <Users /> },
+    { to: "/lead/notifications", label: "Notifications", icon: <Bell /> },
     { to: "/lead/settings", label: "Settings", icon: <Settings /> },
   ],
   artist: [
@@ -44,6 +46,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/artist/assignments", label: "My Assignments", icon: <ClipboardList /> },
     { to: "/artist/submit", label: "Submit Work", icon: <Send /> },
     { to: "/artist/reviews", label: "My Reviews", icon: <MessageSquareText /> },
+    { to: "/artist/notifications", label: "Notifications", icon: <Bell /> },
     { to: "/artist/history", label: "Work History", icon: <History /> },
   ],
 }
@@ -136,6 +139,7 @@ export function AppShell() {
             <Menu />
           </Button>
           <div className="flex-1" />
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent cursor-pointer">

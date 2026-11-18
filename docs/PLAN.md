@@ -42,10 +42,15 @@
 - [x] UI: Submit Work, My Reviews, Work History (artist); Submissions, Reviews with pending badge (lead); scene-state grid in assignment detail
 - [x] 93 backend tests (SQLite + Postgres), 11 frontend tests, full browser walkthrough (submit → partial approve → revise → approve → complete)
 
-## Phase 4 — Notifications & Gmail MCP
-- [ ] In-app notifications (deduplicated), deadline-approaching job
-- [ ] Notification service → email provider interface (mock + Gmail MCP)
-- [ ] Gmail MCP server: 4 tools, OAuth 2.0, minimal scopes (`gmail.send`, `gmail.compose`), recipient allow-list, logging
+## Phase 4 — Notifications & Gmail MCP ✅
+- [x] In-app notifications for all events (unique dedupe keys); bell with unread count, Notifications page
+- [x] Transactional email outbox (`email_logs`, migration 0002): idempotency keys, leased claims (no double send under concurrency), exponential backoff, max attempts, final policy blocks
+- [x] Background loop: dispatcher every 30s and deadline reminders every 5 min (idempotent per deadline)
+- [x] Gmail MCP server (Python MCP SDK, stdio or streamable HTTP) with the 4 tools, typed structured results, and DB-backed recipient policy
+- [x] Report sends require an HMAC approval token and use DB-stored content; drafts can only go to authorized recipients
+- [x] OAuth 2.0 with a single scope (`gmail.compose`), token refresh and save, classified Gmail errors, header-injection safe, masked logging
+- [x] Mock delivery (.eml outbox) when Gmail isn't configured; admin email delivery log with retry
+- [x] 124 backend tests (SQLite + Postgres), including protocol-level MCP tests and a real spawned-subprocess test; browser walkthrough through the real MCP path
 
 ## Phase 5 — AI reporting
 - [ ] Deterministic EOD metrics service (filters: project/episode/artist)

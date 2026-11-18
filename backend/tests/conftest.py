@@ -13,6 +13,9 @@ os.environ["BCRYPT_ROUNDS"] = "4"
 os.environ["EMAIL_PROVIDER"] = "mock"
 os.environ["ANTHROPIC_API_KEY"] = ""
 os.environ["UPLOAD_DIR"] = os.path.join(_tmpdir, "uploads")
+os.environ["MAIL_OUTBOX_DIR"] = os.path.join(_tmpdir, "mail_outbox")
+os.environ["EMAIL_APPROVAL_SECRET"] = "test-approval-secret-0123456789-abcdefghij"
+os.environ["GMAIL_BACKEND"] = "mock"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-0123456789abcdef-0123456789"
 
 import pytest  # noqa: E402

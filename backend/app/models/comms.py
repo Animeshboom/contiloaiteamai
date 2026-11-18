@@ -46,6 +46,11 @@ class EmailLog(TimestampMixin, Base):
     entity_type: Mapped[str | None] = mapped_column(String(60))
     entity_id: Mapped[int | None] = mapped_column(Integer)
     triggered_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # Outbox fields: the exact MCP tool arguments, and retry scheduling.
+    payload: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), index=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class DailyReport(TimestampMixin, Base):

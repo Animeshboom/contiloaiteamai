@@ -13,6 +13,7 @@ import AssignmentsPage from "@/pages/assignments"
 import EmployeesPage from "@/pages/employees"
 import LeadAttendancePage from "@/pages/lead-attendance"
 import LoginPage from "@/pages/login"
+import NotificationsPage from "@/pages/notifications"
 import MyAttendancePage from "@/pages/my-attendance"
 import ProjectDetailPage, { EpisodesScenesPage } from "@/pages/project-detail"
 import ProjectsPage from "@/pages/projects"
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="submissions" element={<SubmissionsPage mode="lead" />} />
         <Route path="reviews" element={<ReviewsPage />} />
         <Route path="artists" element={<ArtistsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
@@ -88,6 +90,7 @@ export default function App() {
         <Route path="submit" element={<SubmitWorkPage />} />
         <Route path="reviews" element={<SubmissionsPage key="reviews" mode="artist-reviews" />} />
         <Route path="history" element={<SubmissionsPage key="history" mode="artist-history" />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
 

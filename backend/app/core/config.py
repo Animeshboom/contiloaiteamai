@@ -2,7 +2,7 @@
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     bcrypt_rounds: int = 12
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]  # env: JSON array
 
     # Studio
     studio_timezone: str = "Asia/Kolkata"
@@ -44,18 +44,22 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-opus-5-5"
 
-    # Email
-    email_provider: str = "mock"  # mock | gmail_mcp
-    email_sender: str = "studiotrack@localhost"
-    gmail_credentials_file: str | None = None  # OAuth client secret json
-    gmail_token_file: str | None = None  # stored user token json
-
-    @field_validator("cors_origins", "allowed_upload_extensions", mode="before")
-    @classmethod
-    def _split_csv(cls, v):
-        if isinstance(v, str) and not v.strip().startswith("["):
-            return [s.strip() for s in v.split(",") if s.strip()]
-        return v
+    # Email / notifications
+    # mock: in-process provider (tests, quick local runs)
+    # mcp:  deliver through the Gmail MCP server (whose GMAIL_BACKEND is "gmail" or "mock")
+    email_provider: str = "mock"
+    email_sender: str | None = None
+    email_approval_secret: str = Field(default="dev-only-approval-secret-change-me-0123456789", min_length=32)
+    gmail_mcp_url: str | None = None  # e.g. http://gmail-mcp:8765/mcp ; unset = spawn via stdio
+    gmail_mcp_dir: str = "../mcp_servers"  # where the gmail_mcp package lives (stdio mode)
+    gmail_backend: str = "mock"  # passed to the MCP server: gmail | mock
+    gmail_credentials_file: str | None = None  # OAuth client secret json (MCP server)
+    gmail_token_file: str | None = None  # authorized user token json (MCP server)
+    mail_outbox_dir: str = "mail_outbox"  # where mock deliveries are written as .eml
+    app_base_url: str = "http://localhost:5173"  # links in emails
+    email_max_attempts: int = 5
+    deadline_reminder_hours: float = 2.0
+    background_jobs: bool = True  # outbox dispatcher + deadline reminders
 
     @property
     def tz(self) -> ZoneInfo:
