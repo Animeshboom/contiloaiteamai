@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { Suspense, lazy, type ReactNode } from "react"
 import { Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { Loader2 } from "lucide-react"
 
@@ -7,24 +7,25 @@ import { AppShell } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { homeFor, useAuth } from "@/lib/auth-context"
 import type { Role } from "@/lib/types"
-import ArtistDashboardPage from "@/pages/artist-dashboard"
-import ArtistsPage from "@/pages/artists"
-import AssignmentsPage from "@/pages/assignments"
-import EmployeesPage from "@/pages/employees"
-import LeadAttendancePage from "@/pages/lead-attendance"
+const ArtistDashboardPage = lazy(() => import("@/pages/artist-dashboard"))
+const ArtistsPage = lazy(() => import("@/pages/artists"))
+const AssignmentsPage = lazy(() => import("@/pages/assignments"))
+const EmployeesPage = lazy(() => import("@/pages/employees"))
+const LeadAttendancePage = lazy(() => import("@/pages/lead-attendance"))
 import LoginPage from "@/pages/login"
-import NotificationsPage from "@/pages/notifications"
-import MyAttendancePage from "@/pages/my-attendance"
-import ProjectDetailPage, { EpisodesScenesPage } from "@/pages/project-detail"
-import ProjectsPage from "@/pages/projects"
-import ReportDetailPage from "@/pages/report-detail"
-import ReportsPage from "@/pages/reports"
-import ReviewsPage from "@/pages/reviews"
-import SubmissionsPage from "@/pages/submissions"
-import SubmitWorkPage from "@/pages/submit-work"
-import SettingsPage from "@/pages/settings"
-import StaffOverviewPage from "@/pages/staff-overview"
-import TeamsPage from "@/pages/teams"
+const NotificationsPage = lazy(() => import("@/pages/notifications"))
+const MyAttendancePage = lazy(() => import("@/pages/my-attendance"))
+const ProjectDetailPage = lazy(() => import("@/pages/project-detail"))
+const EpisodesScenesPage = lazy(() => import("@/pages/project-detail").then((mod) => ({ default: mod.EpisodesScenesPage })))
+const ProjectsPage = lazy(() => import("@/pages/projects"))
+const ReportDetailPage = lazy(() => import("@/pages/report-detail"))
+const ReportsPage = lazy(() => import("@/pages/reports"))
+const ReviewsPage = lazy(() => import("@/pages/reviews"))
+const SubmissionsPage = lazy(() => import("@/pages/submissions"))
+const SubmitWorkPage = lazy(() => import("@/pages/submit-work"))
+const SettingsPage = lazy(() => import("@/pages/settings"))
+const StaffOverviewPage = lazy(() => import("@/pages/staff-overview"))
+const TeamsPage = lazy(() => import("@/pages/teams"))
 
 /** UX guard only — the API enforces every permission independently. */
 function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }) {
@@ -54,8 +55,13 @@ function NotFound() {
   )
 }
 
+function PageLoading() {
+  return <div className="grid min-h-[50vh] place-items-center"><Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Loading" /></div>
+}
+
 export default function App() {
   return (
+    <Suspense fallback={<PageLoading />}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<Home />} />
@@ -102,5 +108,6 @@ export default function App() {
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   )
 }

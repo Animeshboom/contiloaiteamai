@@ -60,5 +60,10 @@
 - [x] Approval token issued at approval time; the MCP server verifies it and sends DB-stored content; tampering is refused
 - [x] 137 backend tests (SQLite + Postgres), 12 frontend tests; all 17 Definition-of-Done steps pass in a real browser
 
-## Phase 6 — Finalization
-- [ ] UI polish, frontend tests, security review, Dockerfiles for api/frontend/mcp, full README + API docs
+## Phase 6 — Finalization ✅
+- [x] Production hardening: refuses to start with placeholder secrets, the dev DB or the mock email provider; API docs off in production; demo seeding off by default; `scripts.create_admin`; warning if demo accounts are active in production
+- [x] Docker: non-root API image (bundles the Gmail MCP server for stdio), nginx web image (SPA, `/api` proxy, strict CSP and security headers), compose `app` profile with healthchecks, migrations and optional demo seed
+- [x] Frontend performance: route-level code splitting and stable vendor chunks (no chunk over 500 kB)
+- [x] Security review ([SECURITY.md](SECURITY.md)): fixed a rate-limit bypass via forged `X-Forwarded-For`; upgraded vulnerable deps (Starlette, PyJWT, python-multipart, mcp, setuptools, React Router 7). Production deps and the built image audit clean
+- [x] Integration: the 17-step Definition of Done passes against the Docker production stack; 139 backend (SQLite + Postgres) and 12 frontend tests
+- [x] README, API, Gmail setup and security docs

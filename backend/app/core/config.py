@@ -61,6 +61,20 @@ class Settings(BaseSettings):
     deadline_reminder_hours: float = 2.0
     background_jobs: bool = True  # outbox dispatcher + deadline reminders
 
+    def production_problems(self) -> list[str]:
+        """Configuration that is acceptable in development but unsafe in production."""
+        problems = []
+        weak = ("change-me", "dev-only", "dev-insecure", "test-")
+        for name in ("jwt_secret_key", "email_approval_secret"):
+            value = getattr(self, name)
+            if len(value) < 32 or any(w in value for w in weak):
+                problems.append(f"{name.upper()} must be a long random value (not a placeholder)")
+        if self.database_url.endswith("studiotrack:studiotrack@localhost:5434/studiotrack"):
+            problems.append("DATABASE_URL still points at the local development database")
+        if self.email_provider == "mock":
+            problems.append("EMAIL_PROVIDER=mock is for tests; use 'mcp' in production")
+        return problems
+
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.studio_timezone)

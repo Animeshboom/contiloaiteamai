@@ -62,3 +62,33 @@ def test_cors_allows_frontend_origin(client):
     })
     assert "access-control-allow-origin" not in r.headers
 
+
+
+def test_production_refuses_placeholder_secrets():
+    from app.core.config import Settings
+    bad = Settings(environment="production", jwt_secret_key="dev-only-secret-change-me-0123456789abcdef",
+                   email_approval_secret="change-me-to-a-long-random-string-at-least-32-chars", email_provider="mock",
+                   database_url="postgresql+psycopg://studiotrack:studiotrack@localhost:5434/studiotrack")
+    problems = " ".join(bad.production_problems())
+    assert "JWT_SECRET_KEY" in problems and "EMAIL_APPROVAL_SECRET" in problems and "EMAIL_PROVIDER" in problems
+    assert "DATABASE_URL" in problems
+    good = Settings(environment="production", jwt_secret_key="x" * 48, email_approval_secret="y" * 48,
+                    email_provider="mcp", database_url="postgresql+psycopg://u:p@db:5432/studiotrack")
+    assert good.production_problems() == []
+
+
+def test_create_admin_script(db, monkeypatch, capsys):
+    import pytest
+    from scripts import create_admin
+    from app.core.security import verify_password
+    monkeypatch.setenv("ADMIN_PASSWORD", "a-very-long-admin-password")
+    monkeypatch.setattr("sys.argv", ["create_admin", "--email", "Ops@Example.com", "--name", "Studio Ops"])
+    create_admin.main()
+    u = db.scalar(select(User).where(User.email == "ops@example.com"))
+    assert u.role_name.value == "admin" and verify_password("a-very-long-admin-password", u.password_hash)
+    with pytest.raises(SystemExit, match="already exists"):
+        create_admin.main()
+    monkeypatch.setenv("ADMIN_PASSWORD", "short")
+    monkeypatch.setattr("sys.argv", ["create_admin", "--email", "x@example.com", "--name", "X"])
+    with pytest.raises(SystemExit, match="at least 12"):
+        create_admin.main()

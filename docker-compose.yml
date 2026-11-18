@@ -1,3 +1,5 @@
+# Local development:   docker compose up -d db            (Postgres only; run API/web from source)
+# Full stack:          docker compose --profile app up -d --build   ->  http://localhost:8080
 services:
   db:
     image: postgres:16-alpine
@@ -6,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-studiotrack}
       POSTGRES_DB: studiotrack
     ports:
-      - "5434:5432"   # 5434 on the host to avoid clashing with a local Postgres
+      - "127.0.0.1:5434:5432"   # dev access from the host only (5434 avoids clashing with a local Postgres)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,5 +17,42 @@ services:
       timeout: 3s
       retries: 20
 
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+      DATABASE_URL: postgresql+psycopg://studiotrack:${POSTGRES_PASSWORD:-studiotrack}@db:5432/studiotrack
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      CORS_ORIGINS: '["${APP_BASE_URL:-http://localhost:8080}"]'
+      EMAIL_PROVIDER: mcp
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}   # never true for a real deployment
+      # Gmail OAuth files are mounted read-only from ./secrets (see docs/GMAIL_SETUP.md)
+      GMAIL_CREDENTIALS_FILE: ${DOCKER_GMAIL_CREDENTIALS_FILE:-}
+      GMAIL_TOKEN_FILE: ${DOCKER_GMAIL_TOKEN_FILE:-}
+    volumes:
+      - appdata:/app/data
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    # Not published: only reachable through the web container.
+    expose:
+      - "8000"
+
+  web:
+    profiles: ["app"]
+    build:
+      context: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  appdata:
