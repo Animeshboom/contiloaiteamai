@@ -1,27 +1,25 @@
-# Render Blueprint: StudioTrack API (Docker) + managed PostgreSQL.
+# Render Blueprint: StudioTrack API (Docker), FREE plan. Database: Neon free Postgres (https://neon.tech).
 # Render dashboard -> New -> Blueprint -> pick this GitHub repo. Fill in the "sync: false" values when prompted.
 # The web app is hosted on Vercel (frontend/vercel.json), which proxies /api/* to this service.
+#
+# Free-plan limits: the service sleeps after ~15 min without traffic (next visit waits ~1 min while it wakes),
+# uploaded files are lost on each redeploy/restart, and reminders/email dispatch pause while asleep.
+# To upgrade: set plan: starter and add a disk (mountPath /app/data) for persistent uploads.
 services:
   - type: web
     name: studiotrack-api            # public URL: https://studiotrack-api.onrender.com (update frontend/vercel.json if it differs)
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
-    plan: starter                    # needs an always-on instance: background email/reminder jobs + persistent disk
+    plan: free
     region: singapore
     healthCheckPath: /api/health
     autoDeploy: true
-    disk:
-      name: data
-      mountPath: /app/data           # uploads + refreshed Gmail token survive redeploys
-      sizeGB: 5
     envVars:
       - key: ENVIRONMENT
         value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: studiotrack-db
-          property: connectionString
+      - key: DATABASE_URL             # Neon connection string: postgresql://...neon.tech/neondb?sslmode=require
+        sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: EMAIL_APPROVAL_SECRET
@@ -55,10 +53,3 @@ services:
       - key: ADMIN_NAME
         value: Studio Admin
 
-databases:
-  - name: studiotrack-db
-    databaseName: studiotrack
-    user: studiotrack
-    plan: basic-256mb
-    region: singapore
-    ipAllowList: []                  # only Render services can connect

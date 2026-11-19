@@ -2,24 +2,39 @@ STUDIOTRACK AI - DEPLOY STEPS (copy-paste checklist)
 =====================================================
 
 Web app  -> Vercel   (folder: frontend)
-API + DB -> Render   (file: render.yaml)
+API      -> Render free plan  (file: render.yaml)
+Database -> Neon free Postgres
 GitHub   -> https://github.com/srinivaspatnaik52-svg/StudioTrack-AI
 Gmail    -> optional, add later (Part 4). Until then emails wait in a queue;
             in-app notifications work normally.
 
-Order: do Part 1 (Render) first, then Part 2 (Vercel), then Part 3 (sign in).
+Order: Part 0 (Neon) -> Part 1 (Render) -> Part 2 (Vercel) -> Part 3 (sign in). All free.
 
 
 -----------------------------------------------------
-PART 1 - BACKEND + DATABASE ON RENDER
+PART 0 - FREE DATABASE ON NEON
 -----------------------------------------------------
-1. Go to https://dashboard.render.com  ->  New  ->  Blueprint
-2. Connect GitHub and choose the repo:   StudioTrack-AI
-3. Render reads render.yaml and creates:
-     - studiotrack-api   (the API, Docker)
-     - studiotrack-db    (PostgreSQL)
-4. It asks for these values. Copy-paste, then change the parts in < >:
+1. Go to https://neon.tech -> Sign up (free, GitHub login is fine)
+2. Create project:
+     Name:     studiotrack
+     Postgres: 16
+     Region:   AWS Asia Pacific (Singapore)
+3. On the project dashboard click "Connect" and copy the connection string.
+   It looks like:
+     postgresql://neondb_owner:XXXX@ep-xxxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+   Keep it for Part 1 (DATABASE_URL). Tables are created automatically.
 
+
+-----------------------------------------------------
+PART 1 - BACKEND ON RENDER (FREE)
+-----------------------------------------------------
+1. Go to https://dashboard.render.com -> sign up (free, GitHub login)
+2. New -> Blueprint
+3. Connect GitHub and choose the repo:   StudioTrack-AI
+4. Render reads render.yaml and creates:  studiotrack-api  (free plan)
+5. It asks for these values. Copy-paste, then change the parts in < >:
+
+   DATABASE_URL        <the Neon connection string from Part 0>
    APP_BASE_URL        https://studiosrackai.vercel.app
    CORS_ORIGINS        ["https://studiosrackai.vercel.app"]
    ADMIN_EMAIL         <your email, used to sign in>
@@ -29,16 +44,15 @@ PART 1 - BACKEND + DATABASE ON RENDER
    GMAIL_CREDENTIALS_JSON   (leave empty - Part 4)
    GMAIL_TOKEN_JSON         (leave empty - Part 4)
 
-   (If your Vercel address is different, use yours in APP_BASE_URL and CORS_ORIGINS.)
-
-5. Click "Apply". Wait until studiotrack-api shows "Live".
-6. Note the API address shown at the top, normally:
+6. Click "Apply". First build takes ~5 minutes. Wait until it shows "Live".
+7. Note the address at the top, normally:
      https://studiotrack-api.onrender.com
-7. Test it in the browser - you should see {"status":"ok",...}:
+8. Test it in the browser - you should see {"status":"ok",...}:
      https://studiotrack-api.onrender.com/api/health
 
-Cost note: render.yaml uses paid plans (API "starter", DB "basic-256mb").
-The free plan sleeps when idle, which stops reminders/email and loses uploads.
+Free plan: the API sleeps after ~15 minutes idle. The first visit after that takes
+about a minute (if login says "server error", wait 30s and try again).
+Uploaded files are lost when the API restarts or redeploys.
 
 
 -----------------------------------------------------
