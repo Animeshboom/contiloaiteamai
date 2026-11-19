@@ -20,7 +20,7 @@ unset GMAIL_CREDENTIALS_JSON GMAIL_TOKEN_JSON
 echo "Applying database migrations..."
 alembic upgrade head
 
-# Creates the first administrator from ADMIN_EMAIL / ADMIN_PASSWORD if set and not yet present.
+# Creates the starter admin / team lead / artist from ADMIN_*, LEAD_*, ARTIST_* if set and not yet present.
 python -m scripts.create_admin --bootstrap
 
 # Trust X-Forwarded-* from the proxy in front (nginx, Render, Vercel) so rate limiting and audit

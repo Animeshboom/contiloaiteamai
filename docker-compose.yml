@@ -29,10 +29,17 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       CORS_ORIGINS: '["${APP_BASE_URL:-http://localhost:8080}"]'
       EMAIL_PROVIDER: mcp
-      # First administrator, created on first start if set (see README). Remove ADMIN_PASSWORD afterwards.
+      # Starter accounts (admin, team lead, artist), created on first start if set. Remove the *_PASSWORDs afterwards.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_NAME: ${ADMIN_NAME:-}
+      LEAD_EMAIL: ${LEAD_EMAIL:-}
+      LEAD_PASSWORD: ${LEAD_PASSWORD:-}
+      LEAD_NAME: ${LEAD_NAME:-}
+      ARTIST_EMAIL: ${ARTIST_EMAIL:-}
+      ARTIST_PASSWORD: ${ARTIST_PASSWORD:-}
+      ARTIST_NAME: ${ARTIST_NAME:-}
+      TEAM_NAME: ${TEAM_NAME:-}
       # Gmail OAuth files are mounted read-only from ./secrets (see docs/GMAIL_SETUP.md)
       GMAIL_CREDENTIALS_FILE: ${DOCKER_GMAIL_CREDENTIALS_FILE:-}
       GMAIL_TOKEN_FILE: ${DOCKER_GMAIL_TOKEN_FILE:-}

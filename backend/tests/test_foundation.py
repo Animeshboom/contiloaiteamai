@@ -108,16 +108,41 @@ def test_create_admin_script(db, monkeypatch, capsys):
         create_admin.main()
 
 
-def test_create_admin_bootstrap_is_idempotent(db, monkeypatch, capsys):
+def test_bootstrap_creates_three_starter_accounts(db, monkeypatch, capsys):
     from scripts import create_admin
+    from app.models import Team
     monkeypatch.setattr("sys.argv", ["create_admin", "--bootstrap"])
-    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
-    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
-    create_admin.main()  # unset: silently does nothing
+    for prefix in ("ADMIN", "LEAD", "ARTIST"):
+        monkeypatch.delenv(f"{prefix}_EMAIL", raising=False)
+        monkeypatch.delenv(f"{prefix}_PASSWORD", raising=False)
+    create_admin.main()  # nothing configured: silently does nothing
+    assert capsys.readouterr().out == ""
+
     monkeypatch.setenv("ADMIN_EMAIL", "Boot@Example.com")
     monkeypatch.setenv("ADMIN_PASSWORD", "a-very-long-admin-password")
+    monkeypatch.setenv("LEAD_EMAIL", "lead@example.com")
+    monkeypatch.setenv("LEAD_PASSWORD", "a-very-long-lead-password")
+    monkeypatch.setenv("ARTIST_EMAIL", "artist@example.com")
+    monkeypatch.setenv("ARTIST_PASSWORD", "a-very-long-artist-password")
+    monkeypatch.setenv("TEAM_NAME", "Bootstrap Team")
     create_admin.main()
-    create_admin.main()  # second start: no error, no duplicate
+    create_admin.main()  # second start: no error, no duplicates
     assert "already exists" in capsys.readouterr().out
-    users = db.scalars(select(User).where(User.email == "boot@example.com")).all()
-    assert len(users) == 1 and users[0].role_name.value == "admin"
+
+    db.expire_all()
+    admin, lead, artist = (db.scalars(select(User).where(User.email == e)).one()
+                           for e in ("boot@example.com", "lead@example.com", "artist@example.com"))
+    team = db.scalars(select(Team).where(Team.name == "Bootstrap Team")).one()
+    assert admin.role_name.value == "admin" and admin.team_id is None
+    assert lead.role_name.value == "team_lead" and lead.team_id == team.id and team.lead_id == lead.id
+    assert artist.role_name.value == "artist" and artist.team_id == team.id
+
+
+def test_bootstrap_rejects_short_password(monkeypatch):
+    import pytest
+    from scripts import create_admin
+    monkeypatch.setattr("sys.argv", ["create_admin", "--bootstrap"])
+    monkeypatch.setenv("LEAD_EMAIL", "lead@example.com")
+    monkeypatch.setenv("LEAD_PASSWORD", "short")
+    with pytest.raises(SystemExit, match="LEAD_PASSWORD must be at least 12"):
+        create_admin.main()

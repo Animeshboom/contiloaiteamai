@@ -37,8 +37,13 @@ PART 1 - BACKEND ON RENDER (FREE)
    DATABASE_URL        <the Neon connection string from Part 0>
    APP_BASE_URL        https://studiosrackai.vercel.app
    CORS_ORIGINS        ["https://studiosrackai.vercel.app"]
-   ADMIN_EMAIL         <your email, used to sign in>
+   ADMIN_EMAIL         <admin login email>
    ADMIN_PASSWORD      <at least 12 characters>
+   LEAD_EMAIL          <team lead login email>
+   LEAD_PASSWORD       <at least 12 characters>
+   ARTIST_EMAIL        <artist login email>
+   ARTIST_PASSWORD     <at least 12 characters>
+   (TEAM_NAME is preset to "Production Team"; the lead and artist are put in it.)
    EMAIL_SENDER        (leave empty for now)
    ANTHROPIC_API_KEY   (optional; leave empty for now)
    GMAIL_CREDENTIALS_JSON   (leave empty - Part 4)
@@ -78,10 +83,15 @@ If your Render API address is NOT https://studiotrack-api.onrender.com:
 PART 3 - FIRST SIGN-IN
 -----------------------------------------------------
 1. Open https://studiosrackai.vercel.app
-2. Sign in with ADMIN_EMAIL / ADMIN_PASSWORD from Part 1.
-3. Settings -> change your password.
-4. Render -> studiotrack-api -> Environment -> delete ADMIN_PASSWORD -> Save.
-5. Add people: Employees (leads, artists) -> Teams -> Projects.
+2. Three accounts exist (from Part 1):
+     Admin      ADMIN_EMAIL  / ADMIN_PASSWORD
+     Team Lead  LEAD_EMAIL   / LEAD_PASSWORD     (leads "Production Team")
+     Artist     ARTIST_EMAIL / ARTIST_PASSWORD   (member of "Production Team")
+3. Each person signs in -> Settings -> changes their password.
+4. Render -> studiotrack-api -> Environment -> delete ADMIN_PASSWORD, LEAD_PASSWORD,
+   ARTIST_PASSWORD -> Save. (Accounts stay; nothing is re-created.)
+5. Admin adds everyone else: Employees (leads, artists) -> Teams -> Projects,
+   and gives each person their email + starting password.
 
 
 -----------------------------------------------------

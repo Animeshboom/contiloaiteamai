@@ -52,4 +52,14 @@ services:
         sync: false
       - key: ADMIN_NAME
         value: Studio Admin
+      - key: LEAD_EMAIL               # starter Team Lead (leads TEAM_NAME)
+        sync: false
+      - key: LEAD_PASSWORD            # min 12 chars
+        sync: false
+      - key: ARTIST_EMAIL             # starter Artist (member of TEAM_NAME)
+        sync: false
+      - key: ARTIST_PASSWORD          # min 12 chars
+        sync: false
+      - key: TEAM_NAME
+        value: Production Team
 
