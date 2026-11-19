@@ -1,5 +1,5 @@
 # StudioTrack API (+ bundled Gmail MCP server, spawned over stdio)
-# Build from the repository root:  docker build -f backend/Dockerfile .
+# Build from the repository root:  docker build .   (Render / Railway / Koyeb pick this file up automatically)
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -9,7 +9,7 @@ services:
   - type: web
     name: studiotrack-api            # public URL: https://studiotrack-api.onrender.com (update frontend/vercel.json if it differs)
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
     region: singapore
