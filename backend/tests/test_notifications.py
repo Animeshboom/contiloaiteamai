@@ -106,6 +106,22 @@ def test_replayed_events_do_not_duplicate(client, as_lead, db):
     assert len(outbox()) == 1
 
 
+
+def test_emails_wait_while_gmail_is_not_configured(client, as_lead, db, monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "email_provider", "mcp")
+    monkeypatch.setattr(s, "gmail_backend", "gmail")
+    monkeypatch.setattr(s, "gmail_mcp_url", None)
+    monkeypatch.setattr(s, "gmail_token_file", None)
+    assert not s.email_configured
+    _assign(client, as_lead, db)  # also triggers a background dispatch, which must hold the email
+    assert asyncio.run(email_service.dispatch_pending()) == {"sent": 0, "failed": 0, "blocked": 0}
+    row = db.scalar(select(EmailLog))
+    db.refresh(row)
+    assert row.status == EmailStatus.PENDING and row.attempts == 0  # untouched: no retries burned
+    monkeypatch.setattr(s, "gmail_backend", "mock")  # Gmail added later -> queued email goes out
+    assert asyncio.run(email_service.dispatch_pending())["sent"] == 1
+
 # ---------------- notification API ----------------
 
 def test_notification_api_is_per_user(client, as_lead, as_artist, db):

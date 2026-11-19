@@ -84,14 +84,16 @@ class Settings(BaseSettings):
             problems.append("EMAIL_PROVIDER must be 'mcp' in production")
         if self.gmail_backend != "gmail":
             problems.append("GMAIL_BACKEND must be 'gmail' in production (mock only writes .eml files)")
-        elif not self.gmail_mcp_url:  # the bundled MCP server needs the OAuth files locally
-            for name in ("gmail_credentials_file", "gmail_token_file"):
-                if not getattr(self, name):
-                    problems.append(f"{name.upper()} (or {name.upper().replace('_FILE', '_JSON')}) must be set; "
-                                    "see docs/GMAIL_SETUP.md")
         if "localhost" in self.app_base_url or "127.0.0.1" in self.app_base_url:
             problems.append("APP_BASE_URL must be the public URL of the web app (used in email links)")
         return problems
+
+    @property
+    def email_configured(self) -> bool:
+        """False until Gmail OAuth is set up. Emails then stay queued (pending) and go out once it is."""
+        if self.email_provider == "mock" or self.gmail_backend == "mock" or self.gmail_mcp_url:
+            return True
+        return bool(self.gmail_credentials_file and self.gmail_token_file)
 
     @property
     def tz(self) -> ZoneInfo:

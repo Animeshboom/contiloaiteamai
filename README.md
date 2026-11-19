@@ -45,9 +45,11 @@ docker compose --profile app up -d --build
 open http://localhost:8080          # set WEB_PORT=8090 if 8080 is taken
 ```
 
-The API runs in production mode inside Docker. It **refuses to start** with placeholder secrets, without real Gmail credentials, or with a localhost `APP_BASE_URL`, and API docs are disabled.
+The API runs in production mode inside Docker. It **refuses to start** with placeholder secrets, mock email, or a localhost `APP_BASE_URL`. Gmail can be added later: until then emails stay queued, and API docs are disabled.
 
 ## Deploy: Vercel (web) + Render (API + Postgres)
+
+Step-by-step, copy-paste version: [docs/DEPLOY_STEPS.txt](docs/DEPLOY_STEPS.txt).
 
 The web app is static and goes on Vercel. The API needs an always-on server (background email/reminder jobs, the bundled Gmail MCP process, persistent uploads), so it goes on Render with managed Postgres.
 

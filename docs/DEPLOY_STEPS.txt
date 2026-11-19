@@ -1,0 +1,130 @@
+STUDIOTRACK AI - DEPLOY STEPS (copy-paste checklist)
+=====================================================
+
+Web app  -> Vercel   (folder: frontend)
+API + DB -> Render   (file: render.yaml)
+GitHub   -> https://github.com/srinivaspatnaik52-svg/StudioTrack-AI
+Gmail    -> optional, add later (Part 4). Until then emails wait in a queue;
+            in-app notifications work normally.
+
+Order: do Part 1 (Render) first, then Part 2 (Vercel), then Part 3 (sign in).
+
+
+-----------------------------------------------------
+PART 1 - BACKEND + DATABASE ON RENDER
+-----------------------------------------------------
+1. Go to https://dashboard.render.com  ->  New  ->  Blueprint
+2. Connect GitHub and choose the repo:   StudioTrack-AI
+3. Render reads render.yaml and creates:
+     - studiotrack-api   (the API, Docker)
+     - studiotrack-db    (PostgreSQL)
+4. It asks for these values. Copy-paste, then change the parts in < >:
+
+   APP_BASE_URL        https://studiosrackai.vercel.app
+   CORS_ORIGINS        ["https://studiosrackai.vercel.app"]
+   ADMIN_EMAIL         <your email, used to sign in>
+   ADMIN_PASSWORD      <at least 12 characters>
+   EMAIL_SENDER        (leave empty for now)
+   ANTHROPIC_API_KEY   (optional; leave empty for now)
+   GMAIL_CREDENTIALS_JSON   (leave empty - Part 4)
+   GMAIL_TOKEN_JSON         (leave empty - Part 4)
+
+   (If your Vercel address is different, use yours in APP_BASE_URL and CORS_ORIGINS.)
+
+5. Click "Apply". Wait until studiotrack-api shows "Live".
+6. Note the API address shown at the top, normally:
+     https://studiotrack-api.onrender.com
+7. Test it in the browser - you should see {"status":"ok",...}:
+     https://studiotrack-api.onrender.com/api/health
+
+Cost note: render.yaml uses paid plans (API "starter", DB "basic-256mb").
+The free plan sleeps when idle, which stops reminders/email and loses uploads.
+
+
+-----------------------------------------------------
+PART 2 - WEB APP ON VERCEL
+-----------------------------------------------------
+1. Vercel -> your project -> Settings -> Git
+     Disconnect "studiosrackai" (old copy, missing today's changes)
+     Connect    "StudioTrack-AI"
+2. Settings -> Build and Deployment -> Root Directory -> Edit
+     Clear the box completely, then type (no spaces):
+       frontend
+     Save.
+   Framework Preset should show: Vite
+3. Deployments -> Create Deployment (branch: main)
+4. Open https://studiosrackai.vercel.app - the sign-in page should load.
+
+If your Render API address is NOT https://studiotrack-api.onrender.com:
+   edit frontend/vercel.json, line with "/api/:path*", put your address,
+   commit and push. Vercel redeploys automatically.
+
+
+-----------------------------------------------------
+PART 3 - FIRST SIGN-IN
+-----------------------------------------------------
+1. Open https://studiosrackai.vercel.app
+2. Sign in with ADMIN_EMAIL / ADMIN_PASSWORD from Part 1.
+3. Settings -> change your password.
+4. Render -> studiotrack-api -> Environment -> delete ADMIN_PASSWORD -> Save.
+5. Add people: Employees (leads, artists) -> Teams -> Projects.
+
+
+-----------------------------------------------------
+PART 4 - ADD GMAIL LATER (emails start sending)
+-----------------------------------------------------
+Gmail never uses your Gmail password. It uses Google sign-in (OAuth).
+
+1. https://console.cloud.google.com -> create a project
+2. APIs & Services -> Library -> "Gmail API" -> Enable
+3. APIs & Services -> OAuth consent screen -> External
+     Add your Gmail address under "Test users"
+4. APIs & Services -> Credentials -> Create credentials -> OAuth client ID
+     Application type: Desktop app -> Create -> Download JSON
+     Save it as:  secrets\gmail_credentials.json   (inside the project folder)
+5. On your PC, in the project folder, run (PowerShell):
+
+   cd mcp_servers
+   $env:GMAIL_CREDENTIALS_FILE="..\secrets\gmail_credentials.json"
+   $env:GMAIL_TOKEN_FILE="..\secrets\gmail_token.json"
+   ..\backend\.venv\Scripts\python -m gmail_mcp.authorize
+
+   A browser opens -> choose your Gmail -> Allow.
+   This creates secrets\gmail_token.json
+
+6. Render -> studiotrack-api -> Environment:
+     GMAIL_CREDENTIALS_JSON  = paste the whole content of secrets\gmail_credentials.json
+     GMAIL_TOKEN_JSON        = paste the whole content of secrets\gmail_token.json
+     EMAIL_SENDER            = your Gmail address
+   Save -> the API restarts -> all queued emails are sent.
+
+Never commit the secrets\ files (they are already in .gitignore).
+More detail: docs/GMAIL_SETUP.md
+
+
+-----------------------------------------------------
+LOCAL RUN (your PC)
+-----------------------------------------------------
+docker compose up -d db
+cd backend
+.venv\Scripts\alembic upgrade head
+.venv\Scripts\python -m scripts.create_admin --email you@studio.com --name "Your Name"
+.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
+
+(new terminal)
+cd frontend
+npm run dev
+-> http://localhost:5173
+
+
+-----------------------------------------------------
+DATABASE IMAGE ON DOCKER HUB (optional)
+-----------------------------------------------------
+Make a PRIVATE repo "studiotrack-db" on hub.docker.com first (the image holds all your data).
+
+docker login
+docker tag studiotrack-db:latest <dockerhub-username>/studiotrack-db:latest
+docker push <dockerhub-username>/studiotrack-db:latest
+
+Run it anywhere:
+docker run -d -p 5434:5432 -e POSTGRES_PASSWORD=<choose one> <dockerhub-username>/studiotrack-db:latest

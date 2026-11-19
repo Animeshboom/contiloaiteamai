@@ -79,8 +79,10 @@ def test_production_refuses_placeholder_secrets():
                        gmail_backend="gmail", gmail_credentials_file="/s/creds.json", gmail_token_file="/s/token.json",
                        app_base_url="https://studiotrack.example.com")
     assert Settings(**good_kwargs).production_problems() == []
-    no_token = Settings(**{**good_kwargs, "gmail_token_file": None}).production_problems()
-    assert any("GMAIL_TOKEN_FILE" in p for p in no_token)
+    # Gmail can be added after the first deploy: the app starts, emails wait in the outbox.
+    no_gmail = Settings(**{**good_kwargs, "gmail_credentials_file": None, "gmail_token_file": None})
+    assert no_gmail.production_problems() == [] and not no_gmail.email_configured
+    assert Settings(**good_kwargs).email_configured
 
 
 def test_database_url_accepts_hosted_postgres_scheme():

@@ -35,6 +35,9 @@ async def lifespan(_: FastAPI):
     if settings.background_jobs and settings.environment != "test":
         task = asyncio.create_task(jobs.run_forever(stop))
         log.info("background jobs started (email provider: %s)", settings.email_provider)
+    if not settings.email_configured:
+        log.warning("Gmail is not configured (GMAIL_CREDENTIALS_FILE/GMAIL_TOKEN_FILE or *_JSON): emails are queued "
+                    "and will be sent once it is. In-app notifications work normally. See docs/GMAIL_SETUP.md")
     yield
     stop.set()
     if task:

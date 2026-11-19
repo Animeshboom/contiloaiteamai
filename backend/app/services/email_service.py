@@ -87,6 +87,8 @@ def _record_failure(row: EmailLog, err: GatewayError) -> None:
 async def dispatch_pending(limit: int = 25, only_id: int | None = None) -> dict[str, int]:
     """Deliver due emails. Safe to call concurrently and repeatedly."""
     stats = {"sent": 0, "failed": 0, "blocked": 0}
+    if not get_settings().email_configured:
+        return stats  # Gmail not set up yet: leave emails pending (not failed) until it is
     with SessionLocal() as db:
         rows = _claim(db, limit, only_id)
         if not rows:

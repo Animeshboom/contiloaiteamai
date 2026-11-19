@@ -38,9 +38,9 @@ services:
         value: mcp
       - key: GMAIL_BACKEND
         value: gmail
-      - key: GMAIL_CREDENTIALS_JSON   # contents of the OAuth client JSON (docs/GMAIL_SETUP.md)
+      - key: GMAIL_CREDENTIALS_JSON   # optional at first: emails queue until set (docs/DEPLOY_STEPS.txt part 4)
         sync: false
-      - key: GMAIL_TOKEN_JSON         # contents of the token JSON from `python -m gmail_mcp.authorize`
+      - key: GMAIL_TOKEN_JSON         # optional at first: token JSON from `python -m gmail_mcp.authorize`
         sync: false
       - key: EMAIL_SENDER
         sync: false
