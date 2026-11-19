@@ -51,10 +51,10 @@ The API runs in production mode inside Docker. It **refuses to start** with plac
 
 Step-by-step, copy-paste version: [docs/DEPLOY_STEPS.txt](docs/DEPLOY_STEPS.txt).
 
-The web app is static and goes on Vercel. The API needs an always-on server (background email/reminder jobs, the bundled Gmail MCP process, persistent uploads), so it goes on Render with managed Postgres.
+The web app is static and goes on Vercel. The API needs an always-on server (background email/reminder jobs, the bundled Gmail MCP process, persistent uploads), so it goes on Render, with the database on Neon. On the free plans it sleeps when idle and uploads are not kept across restarts; see `render.yaml` to upgrade.
 
 1. **Neon** (free Postgres): create a project and copy its connection string.
-2. **Render** (free plan): Dashboard → *New → Blueprint* → select this GitHub repo. `render.yaml` creates `studiotrack-api` (Docker). When prompted, fill in `DATABASE_URL` (the Neon string), `APP_BASE_URL` (your Vercel URL), `CORS_ORIGINS` (`["<your Vercel URL>"]`), `GMAIL_CREDENTIALS_JSON` and `GMAIL_TOKEN_JSON` (file contents, see [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md)), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ANTHROPIC_API_KEY`. JWT and approval secrets are generated for you.
+2. **Render** (free plan): Dashboard → *New → Blueprint* → select this GitHub repo. `render.yaml` creates `studiotrack-api` (Docker). When prompted, fill in `DATABASE_URL` (the Neon string), `APP_BASE_URL` (your Vercel URL), `CORS_ORIGINS` (`["<your Vercel URL>"]`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ANTHROPIC_API_KEY`. Gmail (`GMAIL_CREDENTIALS_JSON`, `GMAIL_TOKEN_JSON`) can be added later; until then emails stay queued. JWT and approval secrets are generated for you.
 3. **Vercel**: *Add New → Project* → import this repo → **Root Directory: `frontend`** (framework Vite is detected; settings come from `frontend/vercel.json`). If your Render URL is not `https://studiotrack-api.onrender.com`, change the `/api` rewrite in `frontend/vercel.json`.
 4. Sign in with `ADMIN_EMAIL`, change the password under **Settings**, then delete `ADMIN_PASSWORD` from Render's environment.
 
