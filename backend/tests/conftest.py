@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.services.seed import DEMO_PASSWORDS, seed_demo  # noqa: E402
+from tests.fixtures import DEMO_PASSWORDS, seed_demo  # noqa: E402
 from app.models import RoleName  # noqa: E402
 
 ADMIN = "admin@studiotrack.demo"

@@ -28,19 +28,6 @@ if settings.is_production:
         raise RuntimeError("Refusing to start in production:\n  - " + "\n  - ".join(_problems))
 
 
-def _warn_demo_accounts() -> None:
-    from sqlalchemy import select  # noqa: PLC0415
-
-    from app.core.database import SessionLocal  # noqa: PLC0415
-    from app.models import User  # noqa: PLC0415
-
-    with SessionLocal() as db:
-        demo = db.scalar(select(User.id).where(User.email.like("%@studiotrack.demo"), User.is_active.is_(True)).limit(1))
-    if demo:
-        log.warning("SECURITY: active demo accounts (@studiotrack.demo, published passwords) exist in a production "
-                    "deployment. Deactivate them, or start from an empty database without SEED_DEMO_DATA.")
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     stop = asyncio.Event()
@@ -48,8 +35,6 @@ async def lifespan(_: FastAPI):
     if settings.background_jobs and settings.environment != "test":
         task = asyncio.create_task(jobs.run_forever(stop))
         log.info("background jobs started (email provider: %s)", settings.email_provider)
-    if settings.is_production:
-        _warn_demo_accounts()
     yield
     stop.set()
     if task:

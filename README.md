@@ -38,32 +38,38 @@ cp .env.example .env
 # Generate the two secrets (each must be a long random value):
 #   python -c "import secrets; print(secrets.token_urlsafe(48))"   -> JWT_SECRET_KEY, EMAIL_APPROVAL_SECRET
 
-# Demo stack with seeded demo accounts:
-SEED_DEMO_DATA=true docker compose --profile app up -d --build
+# First administrator (created on first start; remove ADMIN_PASSWORD from .env afterwards):
+#   ADMIN_EMAIL=you@yourstudio.com  ADMIN_PASSWORD=<12+ chars>  ADMIN_NAME="Your Name"
+# Gmail: set GMAIL_CREDENTIALS_FILE / GMAIL_TOKEN_FILE (docs/GMAIL_SETUP.md), APP_BASE_URL=http://localhost:8080
+docker compose --profile app up -d --build
 open http://localhost:8080          # set WEB_PORT=8090 if 8080 is taken
 ```
 
-The API runs in production mode inside Docker. It **refuses to start** with placeholder secrets or the mock email provider, and API docs are disabled.
+The API runs in production mode inside Docker. It **refuses to start** with placeholder secrets, without real Gmail credentials, or with a localhost `APP_BASE_URL`, and API docs are disabled.
 
-For a **real deployment**, leave `SEED_DEMO_DATA` unset and create the first administrator:
+## Deploy: Vercel (web) + Render (API + Postgres)
 
-```bash
-docker compose --profile app run --rm api python -m scripts.create_admin --email ops@yourstudio.com --name "Studio Ops"
-```
+The web app is static and goes on Vercel. The API needs an always-on server (background email/reminder jobs, the bundled Gmail MCP process, persistent uploads), so it goes on Render with managed Postgres.
+
+1. **Render**: Dashboard → *New → Blueprint* → select this GitHub repo. `render.yaml` creates `studiotrack-api` (Docker) and `studiotrack-db`. When prompted, fill in `APP_BASE_URL` (your Vercel URL), `CORS_ORIGINS` (`["<your Vercel URL>"]`), `GMAIL_CREDENTIALS_JSON` and `GMAIL_TOKEN_JSON` (file contents, see [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md)), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ANTHROPIC_API_KEY`. JWT and approval secrets are generated for you.
+2. **Vercel**: *Add New → Project* → import this repo → **Root Directory: `frontend`** (framework Vite is detected; settings come from `frontend/vercel.json`). If your Render URL is not `https://studiotrack-api.onrender.com`, change the `/api` rewrite in `frontend/vercel.json`.
+3. Sign in with `ADMIN_EMAIL`, change the password under **Settings**, then delete `ADMIN_PASSWORD` from Render's environment.
+
+Vercel proxies `/api/*` to Render, so the browser only ever talks to one origin (no CORS, strict CSP intact).
 
 ## Local development (from source)
 
 Prerequisites: Python 3.11, Node.js 20+, Docker (for Postgres).
 
 ```bash
-cp .env.example .env                     # dev defaults work as-is
+cp .env.example .env                     # set the Gmail OAuth files (docs/GMAIL_SETUP.md)
 docker compose up -d db                  # Postgres on localhost:5434
 
 cd backend
 py -3.11 -m venv .venv                   # macOS/Linux: python3.11 -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt
 .venv/Scripts/alembic upgrade head
-.venv/Scripts/python -m scripts.seed     # demo accounts + demo projects
+.venv/Scripts/python -m scripts.create_admin --email you@studio.com --name "Your Name"
 .venv/Scripts/python -m uvicorn app.main:app --reload --port 8000     # API docs: http://localhost:8000/docs
 
 cd ../frontend
@@ -87,18 +93,6 @@ npm test                                                 # Vitest: timezone, log
 
 The backend suite covers authentication, RBAC and scoping, attendance, assignments, partial submissions, approval, rejection and revisions, notifications and deduplication, the email outbox and duplicate prevention, the Gmail MCP server (in-memory protocol and a spawned subprocess), EOD metric arithmetic, the AI safeguards, report approval and sending, and production config checks.
 
-## Demo accounts (demo data only, never in production)
-
-| Role | Email | Password |
-|---|---|---|
-| Admin | admin@studiotrack.demo | `Admin@12345` |
-| Team Lead (Animation) | lead.anim@studiotrack.demo | `Lead@12345` |
-| Team Lead (Compositing) | lead.comp@studiotrack.demo | `Lead@12345` |
-| Artist (Animation) | artist.arjun@ / artist.sara@ / artist.leo@studiotrack.demo | `Artist@12345` |
-| Artist (Compositing) | artist.nina@ / artist.dev@studiotrack.demo | `Artist@12345` |
-
-Demo projects: **Neon Monsoon (Demo)** (a series: 2 episodes, 11 scenes) and **The Last Letter (Demo)** (a short film: 1 episode, 8 scenes). Two authorized report recipients are configured: producer@ and studio.head@studiotrack.demo.
-
 ## Definition of Done walkthrough
 
 1. Sign in as **admin**. Under **Employees**, add a team lead and an artist. Under **Teams**, create a team led by the new lead. Under **Projects**, create a project for that team, then **Add episode** with generated scenes.
@@ -116,10 +110,9 @@ Every setting is documented in [`.env.example`](.env.example). The main ones:
 | `JWT_SECRET_KEY`, `EMAIL_APPROVAL_SECRET` | Long random secrets. Production refuses placeholders |
 | `STUDIO_TIMEZONE`, `EOD_DEADLINE_HOUR` | All dates and deadlines use studio time |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Optional Claude narrative (default `claude-opus-5-5`). Without a key, a template is used |
-| `EMAIL_PROVIDER` | `mcp` (default) or `mock` (tests) |
-| `GMAIL_BACKEND` | `mock` (writes `.eml` files) or `gmail` |
+| `EMAIL_PROVIDER`, `GMAIL_BACKEND` | `mcp` + `gmail` (real delivery). `mock` exists only for the automated tests |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap the first administrator at container start |
 | `GMAIL_CREDENTIALS_FILE`, `GMAIL_TOKEN_FILE` | Gmail OAuth files — see [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md) |
-| `SEED_DEMO_DATA` | Docker only; `true` seeds demo accounts. Never use it for real deployments |
 
 ### What needs configuring for production
 - **Gmail:** an OAuth client and a one-time authorization, using the `gmail.compose` scope only. See [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md). Mount the files into `./secrets` and set `DOCKER_GMAIL_CREDENTIALS_FILE=/app/secrets/client_secret.json` and `DOCKER_GMAIL_TOKEN_FILE=/app/secrets/gmail_token.json`.

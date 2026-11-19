@@ -1,17 +1,31 @@
 #!/bin/sh
 set -e
 
+# Gmail OAuth files can be supplied as env vars (hosted platforms such as Render) instead of
+# mounted files. They are written to the writable data dir so the token can be refreshed.
+SECRETS_DIR=/app/data/secrets
+if [ -n "$GMAIL_CREDENTIALS_JSON" ]; then
+  mkdir -p "$SECRETS_DIR"
+  printf '%s' "$GMAIL_CREDENTIALS_JSON" > "$SECRETS_DIR/gmail_credentials.json"
+  export GMAIL_CREDENTIALS_FILE="$SECRETS_DIR/gmail_credentials.json"
+fi
+if [ -n "$GMAIL_TOKEN_JSON" ]; then
+  mkdir -p "$SECRETS_DIR"
+  printf '%s' "$GMAIL_TOKEN_JSON" > "$SECRETS_DIR/gmail_token.json"
+  export GMAIL_TOKEN_FILE="$SECRETS_DIR/gmail_token.json"
+fi
+[ -d "$SECRETS_DIR" ] && chmod 700 "$SECRETS_DIR" && chmod 600 "$SECRETS_DIR"/*.json
+unset GMAIL_CREDENTIALS_JSON GMAIL_TOKEN_JSON
+
 echo "Applying database migrations..."
 alembic upgrade head
 
-if [ "${SEED_DEMO_DATA:-false}" = "true" ]; then
-  echo "Seeding demo data (SEED_DEMO_DATA=true)..."
-  python -m scripts.seed
-fi
+# Creates the first administrator from ADMIN_EMAIL / ADMIN_PASSWORD if set and not yet present.
+python -m scripts.create_admin --bootstrap
 
-# The API is only reachable through the nginx container, so trust its X-Forwarded-* headers.
-# Without this, every user would share nginx's IP for rate limiting and audit logs.
+# Trust X-Forwarded-* from the proxy in front (nginx, Render, Vercel) so rate limiting and audit
+# logs see the real client IP. Restrict FORWARDED_ALLOW_IPS if the API is directly reachable.
 exec uvicorn app.main:app \
-  --host 0.0.0.0 --port 8000 \
+  --host 0.0.0.0 --port "${PORT:-8000}" \
   --proxy-headers --forwarded-allow-ips="${FORWARDED_ALLOW_IPS:-*}" \
   --no-server-header

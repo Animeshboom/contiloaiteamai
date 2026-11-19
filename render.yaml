@@ -1,0 +1,64 @@
+# Render Blueprint: StudioTrack API (Docker) + managed PostgreSQL.
+# Render dashboard -> New -> Blueprint -> pick this GitHub repo. Fill in the "sync: false" values when prompted.
+# The web app is hosted on Vercel (frontend/vercel.json), which proxies /api/* to this service.
+services:
+  - type: web
+    name: studiotrack-api            # public URL: https://studiotrack-api.onrender.com (update frontend/vercel.json if it differs)
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: starter                    # needs an always-on instance: background email/reminder jobs + persistent disk
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /app/data           # uploads + refreshed Gmail token survive redeploys
+      sizeGB: 5
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: studiotrack-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: EMAIL_APPROVAL_SECRET
+        generateValue: true
+      - key: APP_BASE_URL             # your Vercel URL, e.g. https://studiotrack.vercel.app
+        sync: false
+      - key: CORS_ORIGINS             # JSON array with the same URL, e.g. ["https://studiotrack.vercel.app"]
+        sync: false
+      - key: STUDIO_TIMEZONE
+        value: Asia/Kolkata
+      - key: EOD_DEADLINE_HOUR
+        value: "19"
+      - key: EMAIL_PROVIDER
+        value: mcp
+      - key: GMAIL_BACKEND
+        value: gmail
+      - key: GMAIL_CREDENTIALS_JSON   # contents of the OAuth client JSON (docs/GMAIL_SETUP.md)
+        sync: false
+      - key: GMAIL_TOKEN_JSON         # contents of the token JSON from `python -m gmail_mcp.authorize`
+        sync: false
+      - key: EMAIL_SENDER
+        sync: false
+      - key: ANTHROPIC_API_KEY        # optional: AI narrative in EOD reports
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-5-5
+      - key: ADMIN_EMAIL              # first administrator, created on first start
+        sync: false
+      - key: ADMIN_PASSWORD           # min 12 chars; delete this variable after your first sign-in
+        sync: false
+      - key: ADMIN_NAME
+        value: Studio Admin
+
+databases:
+  - name: studiotrack-db
+    databaseName: studiotrack
+    user: studiotrack
+    plan: basic-256mb
+    region: singapore
+    ipAllowList: []                  # only Render services can connect

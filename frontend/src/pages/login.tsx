@@ -7,13 +7,6 @@ import { Field, Input } from "@/components/ui/form-controls"
 import { errorMessage } from "@/lib/api"
 import { homeFor, useAuth } from "@/lib/auth-context"
 
-/** Seeded demo accounts (see README). Only shown in development builds. */
-const DEMO = [
-  { label: "Admin", email: "admin@studiotrack.demo", password: "Admin@12345" },
-  { label: "Team Lead", email: "lead.anim@studiotrack.demo", password: "Lead@12345" },
-  { label: "Artist", email: "artist.arjun@studiotrack.demo", password: "Artist@12345" },
-]
-
 export default function LoginPage() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
@@ -79,19 +72,6 @@ export default function LoginPage() {
           </div>
           {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
           <Button type="submit" className="w-full" loading={busy}>Sign in</Button>
-
-          {import.meta.env.DEV && (
-            <div className="rounded-lg border border-dashed p-3">
-              <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Demo accounts (dev only)</p>
-              <div className="grid grid-cols-3 gap-2">
-                {DEMO.map((d) => (
-                  <Button key={d.email} type="button" variant="outline" size="sm" onClick={() => { setEmail(d.email); setPassword(d.password) }}>
-                    {d.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
         </form>
       </div>
     </div>

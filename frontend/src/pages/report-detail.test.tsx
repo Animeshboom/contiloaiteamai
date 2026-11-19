@@ -18,7 +18,7 @@ const totals = {
   pending_reviews: 1, incomplete_assignments: 2, delayed_assignments: 1, late_submissions: 0,
 }
 const report: Report = {
-  id: 9, report_date: "2026-11-18", status: "draft", subject: "Daily production report", recipients: ["producer@studiotrack.demo"],
+  id: 9, report_date: "2026-11-18", status: "draft", subject: "Daily production report", recipients: ["producer@studio.test"],
   ai_status: "generated", created_by_name: "Priya", created_at: "2026-11-18T12:00:00Z", approved_at: null, sent_at: null,
   sent_by_name: null, delivery_status: null, filters: {}, ai_note: null, approved_by_name: null, gmail_message_id: null,
   gmail_draft_id: null, email_error: null, body: "SUMMARY\n1 of 4 team members were present.",
@@ -27,8 +27,8 @@ const report: Report = {
     attendance_by_status: {}, projects: [], artists: [], incomplete_assignments: [], delayed_assignments: [], remarks: [] },
 }
 const recipients = [
-  { id: 1, email: "producer@studiotrack.demo", name: "Producer", purpose: "eod_report", is_active: true },
-  { id: 2, email: "studio.head@studiotrack.demo", name: "Studio Head", purpose: "eod_report", is_active: true },
+  { id: 1, email: "producer@studio.test", name: "Producer", purpose: "eod_report", is_active: true },
+  { id: 2, email: "studio.head@studio.test", name: "Studio Head", purpose: "eod_report", is_active: true },
 ]
 const json = (status: number, body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }))
@@ -73,6 +73,6 @@ describe("ReportDetailPage", () => {
     const patch = JSON.parse(String(fetchMock.mock.calls.find(([, i]) => i?.method === "PATCH")![1].body))
     expect(patch.body).toContain("Lead note.")
     const approve = JSON.parse(String(fetchMock.mock.calls.find(([u]) => String(u).endsWith("/approve"))![1].body))
-    expect(approve.recipients.sort()).toEqual(["producer@studiotrack.demo", "studio.head@studiotrack.demo"])
+    expect(approve.recipients.sort()).toEqual(["producer@studio.test", "studio.head@studio.test"])
   })
 })

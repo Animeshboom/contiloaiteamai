@@ -2,7 +2,7 @@
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,14 +45,14 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5-5"
 
     # Email / notifications
-    # mock: in-process provider (tests, quick local runs)
-    # mcp:  deliver through the Gmail MCP server (whose GMAIL_BACKEND is "gmail" or "mock")
-    email_provider: str = "mock"
+    # mcp:  deliver through the Gmail MCP server (the only provider for real use)
+    # mock: in-process provider, used by the automated test suite only
+    email_provider: str = "mcp"
     email_sender: str | None = None
     email_approval_secret: str = Field(default="dev-only-approval-secret-change-me-0123456789", min_length=32)
     gmail_mcp_url: str | None = None  # e.g. http://gmail-mcp:8765/mcp ; unset = spawn via stdio
     gmail_mcp_dir: str = "../mcp_servers"  # where the gmail_mcp package lives (stdio mode)
-    gmail_backend: str = "mock"  # passed to the MCP server: gmail | mock
+    gmail_backend: str = "gmail"  # passed to the MCP server: gmail (real) | mock (tests only)
     gmail_credentials_file: str | None = None  # OAuth client secret json (MCP server)
     gmail_token_file: str | None = None  # authorized user token json (MCP server)
     mail_outbox_dir: str = "mail_outbox"  # where mock deliveries are written as .eml
@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     email_max_attempts: int = 5
     deadline_reminder_hours: float = 2.0
     background_jobs: bool = True  # outbox dispatcher + deadline reminders
+
+    @field_validator("database_url")
+    @classmethod
+    def _psycopg_driver(cls, v: str) -> str:
+        # Hosted Postgres (Render, Neon, Supabase, Railway) hands out postgres:// URLs.
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix):]
+        return v
 
     def production_problems(self) -> list[str]:
         """Configuration that is acceptable in development but unsafe in production."""
@@ -71,8 +80,17 @@ class Settings(BaseSettings):
                 problems.append(f"{name.upper()} must be a long random value (not a placeholder)")
         if self.database_url.endswith("studiotrack:studiotrack@localhost:5434/studiotrack"):
             problems.append("DATABASE_URL still points at the local development database")
-        if self.email_provider == "mock":
-            problems.append("EMAIL_PROVIDER=mock is for tests; use 'mcp' in production")
+        if self.email_provider != "mcp":
+            problems.append("EMAIL_PROVIDER must be 'mcp' in production")
+        if self.gmail_backend != "gmail":
+            problems.append("GMAIL_BACKEND must be 'gmail' in production (mock only writes .eml files)")
+        elif not self.gmail_mcp_url:  # the bundled MCP server needs the OAuth files locally
+            for name in ("gmail_credentials_file", "gmail_token_file"):
+                if not getattr(self, name):
+                    problems.append(f"{name.upper()} (or {name.upper().replace('_FILE', '_JSON')}) must be set; "
+                                    "see docs/GMAIL_SETUP.md")
+        if "localhost" in self.app_base_url or "127.0.0.1" in self.app_base_url:
+            problems.append("APP_BASE_URL must be the public URL of the web app (used in email links)")
         return problems
 
     @property

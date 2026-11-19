@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.config import get_settings
 from app.core.timeutils import studio_day_bounds_utc, studio_eod
 from app.models import Episode, Role, Scene, Team, User
-from app.services.seed import seed_demo
+from tests.fixtures import seed_demo
 
 
 def test_health(client):
@@ -72,9 +72,21 @@ def test_production_refuses_placeholder_secrets():
     problems = " ".join(bad.production_problems())
     assert "JWT_SECRET_KEY" in problems and "EMAIL_APPROVAL_SECRET" in problems and "EMAIL_PROVIDER" in problems
     assert "DATABASE_URL" in problems
-    good = Settings(environment="production", jwt_secret_key="x" * 48, email_approval_secret="y" * 48,
-                    email_provider="mcp", database_url="postgresql+psycopg://u:p@db:5432/studiotrack")
-    assert good.production_problems() == []
+    assert "GMAIL_BACKEND" in problems  # test env uses the mock backend
+    assert "APP_BASE_URL" in problems
+    good_kwargs = dict(environment="production", jwt_secret_key="x" * 48, email_approval_secret="y" * 48,
+                       email_provider="mcp", database_url="postgresql+psycopg://u:p@db:5432/studiotrack",
+                       gmail_backend="gmail", gmail_credentials_file="/s/creds.json", gmail_token_file="/s/token.json",
+                       app_base_url="https://studiotrack.example.com")
+    assert Settings(**good_kwargs).production_problems() == []
+    no_token = Settings(**{**good_kwargs, "gmail_token_file": None}).production_problems()
+    assert any("GMAIL_TOKEN_FILE" in p for p in no_token)
+
+
+def test_database_url_accepts_hosted_postgres_scheme():
+    from app.core.config import Settings
+    for url in ("postgres://u:p@host:5432/db", "postgresql://u:p@host:5432/db"):
+        assert Settings(database_url=url).database_url == "postgresql+psycopg://u:p@host:5432/db"
 
 
 def test_create_admin_script(db, monkeypatch, capsys):
@@ -92,3 +104,18 @@ def test_create_admin_script(db, monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["create_admin", "--email", "x@example.com", "--name", "X"])
     with pytest.raises(SystemExit, match="at least 12"):
         create_admin.main()
+
+
+def test_create_admin_bootstrap_is_idempotent(db, monkeypatch, capsys):
+    from scripts import create_admin
+    monkeypatch.setattr("sys.argv", ["create_admin", "--bootstrap"])
+    monkeypatch.delenv("ADMIN_EMAIL", raising=False)
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    create_admin.main()  # unset: silently does nothing
+    monkeypatch.setenv("ADMIN_EMAIL", "Boot@Example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD", "a-very-long-admin-password")
+    create_admin.main()
+    create_admin.main()  # second start: no error, no duplicate
+    assert "already exists" in capsys.readouterr().out
+    users = db.scalars(select(User).where(User.email == "boot@example.com")).all()
+    assert len(users) == 1 and users[0].role_name.value == "admin"

@@ -9,7 +9,7 @@ GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]  # drafts + sen
 @dataclass(frozen=True)
 class Config:
     database_url: str
-    backend: str  # "gmail" | "mock"
+    backend: str  # "gmail" (real delivery) | "mock" (test suite only)
     credentials_file: str | None
     token_file: str | None
     sender: str | None
@@ -27,7 +27,7 @@ def load() -> Config:
         raise RuntimeError("DATABASE_URL must be set for the Gmail MCP server (read-only access is sufficient)")
     return Config(
         database_url=db,
-        backend=os.environ.get("GMAIL_BACKEND", "mock").lower(),
+        backend=os.environ.get("GMAIL_BACKEND", "gmail").lower(),
         credentials_file=os.environ.get("GMAIL_CREDENTIALS_FILE") or None,
         token_file=os.environ.get("GMAIL_TOKEN_FILE") or None,
         sender=os.environ.get("EMAIL_SENDER") or None,

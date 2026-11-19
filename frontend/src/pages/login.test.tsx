@@ -8,8 +8,8 @@ import { AuthProvider } from "@/lib/auth-context"
 import LoginPage from "./login"
 
 const lead = {
-  id: 2, email: "lead.anim@studiotrack.demo", full_name: "Priya Raman (Demo Lead)", role: "team_lead",
-  job_title: "Animation Lead", team: { id: 1, name: "Animation Unit (Demo)" }, is_active: true,
+  id: 2, email: "lead.anim@studio.test", full_name: "Priya Raman", role: "team_lead",
+  job_title: "Animation Lead", team: { id: 1, name: "Animation Unit" }, is_active: true,
   last_login_at: null, created_at: "2026-11-01T00:00:00Z",
 }
 const config = { studio_timezone: "Asia/Kolkata", eod_deadline_hour: 19, studio_today: "2026-11-18", email_provider: "mock", gmail_backend: "mock", ai_enabled: false, max_upload_mb: 25 }
@@ -59,7 +59,7 @@ describe("LoginPage", () => {
   it("shows the server's error and stores no token on bad credentials", async () => {
     fetchMock.mockImplementation(() => json(401, { error: "unauthorized", detail: "Invalid email or password" }))
     renderLogin()
-    await userEvent.type(screen.getByLabelText("Email"), "x@studiotrack.demo")
+    await userEvent.type(screen.getByLabelText("Email"), "x@studio.test")
     await userEvent.type(screen.getByLabelText("Password"), "wrong")
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
 

@@ -29,7 +29,10 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       CORS_ORIGINS: '["${APP_BASE_URL:-http://localhost:8080}"]'
       EMAIL_PROVIDER: mcp
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}   # never true for a real deployment
+      # First administrator, created on first start if set (see README). Remove ADMIN_PASSWORD afterwards.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-}
       # Gmail OAuth files are mounted read-only from ./secrets (see docs/GMAIL_SETUP.md)
       GMAIL_CREDENTIALS_FILE: ${DOCKER_GMAIL_CREDENTIALS_FILE:-}
       GMAIL_TOKEN_FILE: ${DOCKER_GMAIL_TOKEN_FILE:-}
