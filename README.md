@@ -26,7 +26,7 @@ StudioTrack AI is an internal production and workforce platform for an AI film s
 |---|---|
 | `backend/app/` | FastAPI app, organised as `core/`, `models/`, `schemas/`, `services/` (all business logic) and `api/routes/` (thin) |
 | `backend/alembic/versions/` | Migrations 0001–0003 |
-| `backend/tests/` | 146 pytest tests (SQLite or Postgres) |
+| `backend/tests/` | 151 pytest tests (SQLite or Postgres) |
 | `mcp_servers/gmail_mcp/` | Standalone Gmail MCP server (Python MCP SDK) |
 | `frontend/src/` | `pages/`, `components/`, `components/ui/` (shadcn primitives), `lib/` (API client, queries, types, formatting) |
 | `docs/` | `PLAN.md` · `API.md` · `GMAIL_SETUP.md` · `SECURITY.md` |
@@ -86,7 +86,7 @@ npm run dev                              # http://localhost:5173 (proxies /api t
 
 ```bash
 cd backend
-.venv/Scripts/python -m pytest                           # 146 tests on SQLite
+.venv/Scripts/python -m pytest                           # 151 tests on SQLite
 TEST_DATABASE_URL=postgresql+psycopg://studiotrack:studiotrack@localhost:5434/studiotrack_test \
   .venv/Scripts/python -m pytest                         # same suite on Postgres
 

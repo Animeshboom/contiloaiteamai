@@ -83,6 +83,51 @@ def test_cors_origin_regex_allows_preview_origins_only():
     assert not allowed("https://x.studiotrack-ai.pages.dev.evil.com")
 
 
+@pytest.mark.parametrize("configured", [
+    "https://studiotrack-ai.pages.dev",
+    "https://studiotrack-ai.pages.dev/",
+    "https://studiotrack-ai.pages.dev//",
+    "  https://studiotrack-ai.pages.dev/ ",
+])
+def test_cors_origins_are_normalized_and_match_browser_origin(configured, monkeypatch):
+    from fastapi.middleware.cors import CORSMiddleware
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from app.core.config import Settings
+
+    # Exactly as Render passes it: a JSON array in an environment variable.
+    monkeypatch.setenv("CORS_ORIGINS", f'["{configured}", "https://studio.example.com:8443/"]')
+    origins = Settings(_env_file=None).cors_origins
+    assert origins == ["https://studiotrack-ai.pages.dev", "https://studio.example.com:8443"]
+
+    app_ = Starlette()
+    app_.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["POST"], allow_headers=["Content-Type"])
+    c = TestClient(app_)
+
+    def allowed(origin):
+        r = c.options("/x", headers={"Origin": origin, "Access-Control-Request-Method": "POST"})
+        return r.headers.get("access-control-allow-origin") == origin
+
+    assert allowed("https://studiotrack-ai.pages.dev")          # what browsers actually send
+    assert allowed("https://studio.example.com:8443")
+    assert not allowed("https://studiotrack-ai.pages.dev.evil.com")
+    assert not allowed("https://evil.example")
+    assert not allowed("http://studiotrack-ai.pages.dev")       # scheme still matters
+
+
+def test_cors_normalization_does_not_weaken_production_checks():
+    from app.core.config import Settings
+
+    good = dict(environment="production", jwt_secret_key="x" * 48, email_approval_secret="y" * 48,
+                database_url="postgresql+psycopg://u:p@db:5432/studiotrack", app_base_url="https://studiotrack.example.com",
+                email_provider="mcp", gmail_backend="gmail")  # the test env defaults these to mock
+    for bad in (["*"], ["*/"], ["http://localhost:5173/"], ["/"], ["", " "], []):
+        s = Settings(**good, cors_origins=bad)
+        assert any("CORS_ORIGINS" in p for p in s.production_problems()), (bad, s.cors_origins)
+    assert Settings(**good, cors_origins=["https://studiotrack.example.com/"]).production_problems() == []
+
+
 def test_production_refuses_placeholder_secrets():
     from app.core.config import Settings
     bad = Settings(environment="production", jwt_secret_key="dev-only-secret-change-me-0123456789abcdef",

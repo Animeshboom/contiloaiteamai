@@ -152,7 +152,7 @@ edit with Claude Code → git commit → git push origin main
 
 | What | How |
 |---|---|
-| API code | Render → service → **Events** → pick the last good deploy → **Rollback**. Or `git revert <sha> && git push` (never force-push). |
+| API code | **Free plan: Render can roll back only to the two most recent previous deploys.** Render → service → **Events** → one of those two deploys → **Rollback**. For anything older, or when unsure, `git revert <bad sha> && git push origin main` (never force-push). The revert goes through CI and then auto-deploys like any commit. A dashboard rollback is a quick stop-gap; follow it with a revert commit so `main` matches what's running. |
 | Frontend | Cloudflare → Pages project → **Deployments** → previous deployment → **⋯ → Rollback to this deployment** |
 | Database | Neon → **Restore** (point-in-time within the free plan's history window) or switch to the branch created before the migration. Restores replace data, so do this **only deliberately**. |
 | Config | Render → Environment: revert the variable → Save, rebuild and deploy |
@@ -163,7 +163,7 @@ Migrations are forward-only. If a deploy with a new migration must be rolled bac
 
 | Provider | Limit | Impact |
 |---|---|---|
-| Render free | Sleeps after ~15 min idle. Cold start ~30–60 s. 750 instance-hours/month. Ephemeral disk. | First login after idle is slow. **Uploaded attachments are lost on every deploy/restart.** Reminders and email dispatch pause while asleep. |
+| Render free | Sleeps after ~15 min idle. Cold start ~30–60 s. 750 instance-hours/month. Ephemeral disk. Dashboard rollback only to the 2 most recent previous deploys. Can be restarted by Render at any time. | First login after idle is slow. **Uploaded attachments are lost on every deploy/restart.** Reminders and email dispatch pause while asleep. Older rollbacks need a `git revert`. |
 | Neon free | 0.5 GB storage, monthly compute-hour allowance, scales to zero after 5 min idle | Sub-second wake on first query. Fine for a prototype. |
 | Cloudflare Pages free | 500 builds/month, 1 concurrent build | Plenty |
 | GitHub Actions | Free minutes for your account type (unlimited for public repos) | CI is ~5 min per push |

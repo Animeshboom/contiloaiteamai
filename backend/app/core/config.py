@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     deadline_reminder_hours: float = 2.0
     background_jobs: bool = True  # outbox dispatcher + deadline reminders
 
+    @field_validator("cors_origins")
+    @classmethod
+    def _normalize_origins(cls, v: list[str]) -> list[str]:
+        # Browsers send Origin as scheme://host[:port] with no trailing slash, and CORS matching is exact,
+        # so "https://app.pages.dev/" would silently match nothing. Strip whitespace and trailing slashes only;
+        # every other character (including "*") is kept, so production_problems() still rejects bad values.
+        normalized = [o.strip().rstrip("/") for o in v]
+        return [o for o in normalized if o]
+
     @field_validator("database_url")
     @classmethod
     def _psycopg_driver(cls, v: str) -> str:
