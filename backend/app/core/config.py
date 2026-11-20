@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]  # env: JSON array
+    # Optional regex for extra origins, e.g. Cloudflare Pages preview builds:
+    #   ^https://[a-z0-9-]+\.studiotrack-ai\.pages\.dev$     (unset = only CORS_ORIGINS are allowed)
+    cors_origin_regex: str | None = None
 
     # Studio
     studio_timezone: str = "Asia/Kolkata"
@@ -38,7 +41,10 @@ class Settings(BaseSettings):
     ]
 
     # Rate limits
-    login_rate_limit: str = "10/minute"
+    login_rate_limit: str = "10/minute"  # per client IP
+    # Per account (independent of IP headers, which a client can forge behind some proxies)
+    login_max_failures: int = 10
+    login_failure_window_minutes: int = 15
 
     # AI (Claude)
     anthropic_api_key: str | None = None
@@ -60,6 +66,15 @@ class Settings(BaseSettings):
     email_max_attempts: int = 5
     deadline_reminder_hours: float = 2.0
     background_jobs: bool = True  # outbox dispatcher + deadline reminders
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _normalize_origins(cls, v: list[str]) -> list[str]:
+        # Browsers send Origin as scheme://host[:port] with no trailing slash, and CORS matching is exact,
+        # so "https://app.pages.dev/" would silently match nothing. Strip whitespace and trailing slashes only;
+        # every other character (including "*") is kept, so production_problems() still rejects bad values.
+        normalized = [o.strip().rstrip("/") for o in v]
+        return [o for o in normalized if o]
 
     @field_validator("database_url")
     @classmethod
@@ -86,6 +101,9 @@ class Settings(BaseSettings):
             problems.append("GMAIL_BACKEND must be 'gmail' in production (mock only writes .eml files)")
         if "localhost" in self.app_base_url or "127.0.0.1" in self.app_base_url:
             problems.append("APP_BASE_URL must be the public URL of the web app (used in email links)")
+        public_origins = [o for o in self.cors_origins if "localhost" not in o and "127.0.0.1" not in o]
+        if "*" in self.cors_origins or not public_origins:
+            problems.append('CORS_ORIGINS must be a JSON list of the web app URL(s), e.g. ["https://studiotrack-ai.pages.dev"]')
         return problems
 
     @property

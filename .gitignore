@@ -13,3 +13,6 @@ client_secret*.json
 mail_outbox/
 secrets/*
 !secrets/.gitkeep
+
+# Local credentials for scripts/e2e_workflow.py (never commit)
+.e2e.env

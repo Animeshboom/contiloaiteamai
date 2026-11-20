@@ -2,6 +2,13 @@
 
 const TOKEN_KEY = "studiotrack.token"
 
+/**
+ * Origin of the API, baked in at build time. Empty (the default) means same-origin `/api/...`,
+ * which is what local dev (Vite proxy) and Docker (nginx proxy) use. Hosted builds where the API
+ * lives on another domain set VITE_API_BASE_URL, e.g. https://studiotrack-api.onrender.com
+ */
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "")
+
 export class ApiError extends Error {
   status: number
   code: string
@@ -40,7 +47,7 @@ function buildUrl(path: string, query?: Query) {
       if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v))
     }
   }
-  return url.pathname + url.search
+  return API_BASE_URL + url.pathname + url.search
 }
 
 async function send(method: string, path: string, body?: BodyInit, json = false, query?: Query): Promise<Response> {
@@ -50,7 +57,7 @@ async function send(method: string, path: string, body?: BodyInit, json = false,
   try {
     return await fetch(buildUrl(path, query), { method, headers, body })
   } catch {
-    throw new ApiError(0, "network", "Cannot reach the StudioTrack server. Is the API running?")
+    throw new ApiError(0, "network", "Cannot reach the StudioTrack server. If it was idle it may be waking up; please try again in a minute.")
   }
 }
 

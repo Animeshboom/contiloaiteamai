@@ -12,7 +12,9 @@ class Base(DeclarativeBase):
 
 
 def _make_engine(url: str):
-    kwargs: dict = {"pool_pre_ping": True}
+    # pre_ping + recycle: serverless Postgres (Neon) suspends idle compute and drops connections;
+    # connect_timeout bounds the wait while it wakes instead of hanging a request.
+    kwargs: dict = {"pool_pre_ping": True, "pool_recycle": 300, "connect_args": {"connect_timeout": 15}}
     if url.startswith("sqlite"):
         kwargs = {"connect_args": {"check_same_thread": False}}
     engine = create_engine(url, **kwargs)

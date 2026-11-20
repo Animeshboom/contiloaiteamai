@@ -1,0 +1,36 @@
+# Known-vulnerability audit of runtime dependencies.
+# Runs when dependency files change and weekly. Kept separate from CI so that a newly published
+# advisory in an untouched dependency does not block an unrelated urgent deploy.
+name: Dependency audit
+
+on:
+  push:
+    paths: ["backend/requirements*.txt", "frontend/package.json", "frontend/package-lock.json", "mcp_servers/requirements.txt"]
+  pull_request:
+    paths: ["backend/requirements*.txt", "frontend/package.json", "frontend/package-lock.json", "mcp_servers/requirements.txt"]
+  schedule:
+    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Python (backend/requirements.txt)
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.node-version
+      - name: npm (runtime dependencies, high and critical)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

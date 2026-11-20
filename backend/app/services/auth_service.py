@@ -2,6 +2,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import Unauthorized, ValidationFailed
+from app.core.rate_limit import login_throttle
 from app.core.security import create_access_token, hash_password, verify_password
 from app.core.timeutils import utcnow
 from app.models import User
@@ -13,14 +14,18 @@ _DUMMY_HASH = hash_password("not-a-real-password")
 
 
 def authenticate(db: Session, email: str, password: str, ip: str | None) -> tuple[User, str]:
+    login_throttle.check(email)
     user = db.scalar(select(User).where(func.lower(User.email) == email.lower()))
     if user is None:
         verify_password(password, _DUMMY_HASH)
+        login_throttle.record_failure(email)
         raise Unauthorized("Invalid email or password")
     if not verify_password(password, user.password_hash):
+        login_throttle.record_failure(email)
         audit.record(db, actor_id=user.id, action="auth.login_failed", entity_type="user", entity_id=user.id, ip=ip)
         db.commit()
         raise Unauthorized("Invalid email or password")
+    login_throttle.reset(email)
     if not user.is_active or user.deleted_at is not None:
         raise Unauthorized("Account is inactive. Contact your administrator.")
 

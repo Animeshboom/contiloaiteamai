@@ -26,7 +26,7 @@ StudioTrack AI is an internal production and workforce platform for an AI film s
 |---|---|
 | `backend/app/` | FastAPI app, organised as `core/`, `models/`, `schemas/`, `services/` (all business logic) and `api/routes/` (thin) |
 | `backend/alembic/versions/` | Migrations 0001–0003 |
-| `backend/tests/` | 139 pytest tests (SQLite or Postgres) |
+| `backend/tests/` | 151 pytest tests (SQLite or Postgres) |
 | `mcp_servers/gmail_mcp/` | Standalone Gmail MCP server (Python MCP SDK) |
 | `frontend/src/` | `pages/`, `components/`, `components/ui/` (shadcn primitives), `lib/` (API client, queries, types, formatting) |
 | `docs/` | `PLAN.md` · `API.md` · `GMAIL_SETUP.md` · `SECURITY.md` |
@@ -45,20 +45,20 @@ docker compose --profile app up -d --build
 open http://localhost:8080          # set WEB_PORT=8090 if 8080 is taken
 ```
 
-The API runs in production mode inside Docker. It **refuses to start** with placeholder secrets, mock email, or a localhost `APP_BASE_URL`. Gmail can be added later: until then emails stay queued, and API docs are disabled.
+The local stack runs the API in **development** mode (localhost URLs are fine). To run the same images as a self-hosted production server, set `APP_ENVIRONMENT=production` plus public `APP_BASE_URL`/`CORS_ORIGINS`; production mode **refuses to start** with placeholder secrets, mock email, localhost URLs or missing CORS origins. Gmail can be added later: until then emails stay queued.
 
-## Deploy (free): Vercel (web) + Render (API) + Neon (Postgres)
+## Deploy (free): Cloudflare Pages (web) + Render (API) + Neon (Postgres)
 
-Step-by-step, copy-paste version: [docs/DEPLOY_STEPS.txt](docs/DEPLOY_STEPS.txt).
+```
+ browser ──▶ Cloudflare Pages (static React build, SPA fallback, security headers)
+    │
+    └── HTTPS + Bearer token (CORS: only the Pages origin) ──▶ Render: FastAPI (Docker) ──TLS──▶ Neon Postgres
+```
 
-The web app is static and goes on Vercel. The API needs an always-on server (background email/reminder jobs, the bundled Gmail MCP process, persistent uploads), so it goes on Render, with the database on Neon. On the free plans it sleeps when idle and uploads are not kept across restarts; see `render.yaml` to upgrade.
-
-1. **Neon** (free Postgres): create a project and copy its connection string.
-2. **Render** (free plan): Dashboard → *New → Blueprint* → select this GitHub repo. `render.yaml` creates `studiotrack-api` (Docker). When prompted, fill in `DATABASE_URL` (the Neon string), `APP_BASE_URL` (your Vercel URL), `CORS_ORIGINS` (`["<your Vercel URL>"]`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ANTHROPIC_API_KEY`. Gmail (`GMAIL_CREDENTIALS_JSON`, `GMAIL_TOKEN_JSON`) can be added later; until then emails stay queued. JWT and approval secrets are generated for you.
-3. **Vercel**: *Add New → Project* → import this repo → **Root Directory: `frontend`** (framework Vite is detected; settings come from `frontend/vercel.json`). If your Render URL is not `https://studiotrack-api.onrender.com`, change the `/api` rewrite in `frontend/vercel.json`.
-4. Sign in with `ADMIN_EMAIL`, change the password under **Settings**, then delete `ADMIN_PASSWORD` from Render's environment.
-
-Vercel proxies `/api/*` to Render, so the browser only ever talks to one origin (no CORS, strict CSP intact).
+- Full guide: [PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md) · plan: [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) · current state: [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md) · problems: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- The browser calls the API directly at `VITE_API_BASE_URL` (a public, build-time Cloudflare Pages variable). Only the API talks to the database.
+- Updates: push to `main`. GitHub Actions CI runs; Render deploys the API only after CI passes; Cloudflare Pages rebuilds the frontend (its build also runs the frontend tests).
+- The previous Vercel setup (`vercel.json`, `frontend/vercel.json`, `docs/DEPLOY_STEPS.txt`) is **superseded** and kept only for reference; see [DEPLOYMENT_AUDIT.md](DEPLOYMENT_AUDIT.md).
 
 ## Local development (from source)
 
@@ -86,12 +86,12 @@ npm run dev                              # http://localhost:5173 (proxies /api t
 
 ```bash
 cd backend
-.venv/Scripts/python -m pytest                           # 139 tests on SQLite
+.venv/Scripts/python -m pytest                           # 151 tests on SQLite
 TEST_DATABASE_URL=postgresql+psycopg://studiotrack:studiotrack@localhost:5434/studiotrack_test \
   .venv/Scripts/python -m pytest                         # same suite on Postgres
 
 cd ../frontend
-npm test                                                 # Vitest: timezone, login, review panel, report approval
+npm test                                                 # Vitest: API client, timezone, login, review panel, report approval
 ```
 
 The backend suite covers authentication, RBAC and scoping, attendance, assignments, partial submissions, approval, rejection and revisions, notifications and deduplication, the email outbox and duplicate prevention, the Gmail MCP server (in-memory protocol and a spawned subprocess), EOD metric arithmetic, the AI safeguards, report approval and sending, and production config checks.
