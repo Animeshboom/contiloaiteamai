@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { ChatLiveContext, chatKeys, markDeleted, upsertMessage } from "@/lib/chat"
 import type { ChatMessage } from "@/lib/types"
+import { API_BASE_URL } from "@/lib/api"
 
 /**
  * One live chat connection per tab (mounted inside the signed-in shell, so it closes on sign-out).
@@ -39,7 +40,7 @@ export function ChatLiveProvider({ children }: { children: ReactNode }) {
       try {
         const { ticket } = await api.post<{ ticket: string }>("/chat/stream-ticket")
         if (stopped) return
-        es = new EventSource(`/api/v1/chat/stream?ticket=${encodeURIComponent(ticket)}`)
+        es = new EventSource(`${API_BASE_URL}/api/v1/chat/stream?ticket=${encodeURIComponent(ticket)}`)
         es.onopen = () => {
           attempt = 0
           setConnected(true)

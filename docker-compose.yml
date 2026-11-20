@@ -24,7 +24,8 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     environment:
-      ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+      # Local stack defaults to development (production mode requires public URLs; see PRODUCTION_DEPLOYMENT_GUIDE.md)
+      ENVIRONMENT: ${APP_ENVIRONMENT:-development}
       DATABASE_URL: postgresql+psycopg://studiotrack:${POSTGRES_PASSWORD:-studiotrack}@db:5432/studiotrack
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       CORS_ORIGINS: '["${APP_BASE_URL:-http://localhost:8080}"]'

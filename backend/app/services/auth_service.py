@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Forbidden, Locked, Unauthorized, ValidationFailed
+from app.core.rate_limit import login_throttle
 from app.core.security import create_access_token, create_mfa_token, decode_mfa_token, hash_password, verify_password
 from app.core.timeutils import utcnow
 from app.models import RoleName, User
@@ -24,16 +25,19 @@ def authenticate(db: Session, email: str, password: str, ip: str | None,
         raise ValidationFailed("Sign-in is handled by Supabase Auth")
     identifier = email.strip()
     email = identity.login_email(identifier)
+    login_throttle.check(email)  # per-account backstop (in memory); the DB lockout below is the main one
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None and "@" not in identifier:  # an Employee ID
         user = db.scalar(select(User).where(func.upper(User.employee_code) == identifier.upper()))
     if user is None:
         verify_password(password, _DUMMY_HASH)
+        login_throttle.record_failure(email)
         raise Unauthorized("Invalid email or password")
     locked = security_service.lock_message(user)
     if locked:
         raise Locked(locked)
     if not verify_password(password, user.password_hash):
+        login_throttle.record_failure(email)
         audit.record(db, actor_id=user.id, action="auth.login_failed", entity_type="user", entity_id=user.id, ip=ip)
         security_service.record_failed_login(db, user)
         db.commit()
@@ -41,6 +45,7 @@ def authenticate(db: Session, email: str, password: str, ip: str | None,
         if locked:
             raise Locked(locked)
         raise Unauthorized("Invalid email or password")
+    login_throttle.reset(email)
     if not user.is_active or user.deleted_at is not None:
         raise Unauthorized("Account is inactive. Contact your administrator.")
 

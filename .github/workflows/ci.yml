@@ -1,0 +1,108 @@
+# CI for every push and pull request.
+# Deployments are done by the providers' GitHub integrations, not by this workflow:
+#   - Render deploys the API from `main` only after these checks pass (render.yaml: autoDeployTrigger: checksPass)
+#   - Cloudflare Pages builds the frontend on every push (its build command also runs the frontend tests)
+# No secrets are needed: tests use SQLite and a throwaway Postgres service container.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests + migrations (Postgres 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PGPASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"   # same as the production Docker image
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Dependency consistency
+        run: pip check
+      - name: Tests (SQLite)
+        run: python -m pytest
+      - name: Create CI databases
+        run: |
+          psql -h localhost -U postgres -c "CREATE DATABASE migrations_check"
+          psql -h localhost -U postgres -c "CREATE DATABASE tests_pg"
+      - name: Migrations apply on an empty Postgres (what Neon gets on deploy)
+        env:
+          DATABASE_URL: postgresql://postgres:ci-only-password@localhost:5432/migrations_check
+        run: python -m alembic upgrade head
+      - name: Models and migrations are in sync (fails if a model change has no migration)
+        env:
+          DATABASE_URL: postgresql://postgres:ci-only-password@localhost:5432/migrations_check
+        run: python -m alembic check
+      - name: Tests (Postgres)
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:ci-only-password@localhost:5432/tests_pg
+        run: python -m pytest
+
+  frontend:
+    name: Frontend lint, tests, production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm test
+      - name: Production build (as Cloudflare Pages builds it)
+        env:
+          VITE_API_BASE_URL: https://studiotrack-api.onrender.com
+        run: npm run build
+      - name: Build output sanity
+        run: |
+          test -f dist/index.html
+          test -f dist/_headers
+          grep -q "studiotrack-api.onrender.com" dist/assets/*.js
+
+  api-image:
+    name: API Docker image builds (what Render builds)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t studiotrack-api:ci .
+      - name: Image starts in production mode and refuses unsafe config
+        run: |
+          # No DB/secrets given: the app must refuse to start with a clear message, proving the
+          # entrypoint, imports and production guard all run inside the image.
+          out=$(docker run --rm -e ENVIRONMENT=production --entrypoint python studiotrack-api:ci -c "import app.main" 2>&1 || true)
+          echo "$out" | tail -8
+          echo "$out" | grep -q "Refusing to start in production"

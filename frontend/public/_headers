@@ -1,0 +1,17 @@
+# Cloudflare Pages response headers (copied verbatim into dist/ by Vite).
+# SPA routing needs no rule: with no top-level 404.html, Pages serves index.html for unknown paths,
+# so refreshing /admin/projects/3 works.
+# connect-src must include the API origin (VITE_API_BASE_URL). Render URLs are *.onrender.com;
+# add your API's custom domain here if you ever give it one.
+# The Supabase project URL is needed only when Supabase Auth is turned on (VITE_SUPABASE_URL).
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.onrender.com https://occinjbwcqdposnrraxv.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

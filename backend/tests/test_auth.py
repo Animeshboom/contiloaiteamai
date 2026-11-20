@@ -56,6 +56,39 @@ def test_login_validation_error(client):
     assert r.status_code == 422
 
 
+def test_failed_login_throttle_is_per_account(client, monkeypatch):
+    from app.core import rate_limit
+
+    throttle = rate_limit.FailedLoginThrottle(max_failures=3, window_seconds=900)
+    monkeypatch.setattr("app.services.auth_service.login_throttle", throttle)
+
+    for _ in range(3):
+        r = client.post("/api/v1/auth/login", json={"email": ARTIST, "password": "wrong-password"})
+        assert r.status_code == 401
+    # Blocked even with the right password, whatever IP header the client sends.
+    r = client.post("/api/v1/auth/login", json={"email": ARTIST.upper(), "password": password_for(ARTIST)},
+                    headers={"X-Forwarded-For": "203.0.113.9"})
+    assert r.status_code == 429 and r.json()["error"] == "rate_limited"
+    # Other accounts are unaffected; a success clears that account's counter.
+    assert client.post("/api/v1/auth/login", json={"email": LEAD, "password": password_for(LEAD)}).status_code == 200
+    throttle.reset(ARTIST)
+    assert client.post("/api/v1/auth/login", json={"email": ARTIST, "password": password_for(ARTIST)}).status_code == 200
+
+
+def test_failed_login_throttle_window_expires(monkeypatch):
+    from app.core import rate_limit
+
+    now = [1000.0]
+    monkeypatch.setattr(rate_limit.time, "monotonic", lambda: now[0])
+    t = rate_limit.FailedLoginThrottle(max_failures=2, window_seconds=60)
+    t.record_failure("a@x.io")
+    t.record_failure("A@x.io")
+    with pytest.raises(rate_limit.TooManyAttempts):
+        t.check("a@x.io")
+    now[0] += 61
+    t.check("a@x.io")  # window passed
+
+
 def test_login_writes_audit_log(client, db):
     login(client, ARTIST)
     client.post("/api/v1/auth/login", json={"email": ARTIST, "password": "bad"})

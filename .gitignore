@@ -19,3 +19,5 @@ secrets/*
 # Local SQLite databases (may contain real accounts)
 *.db
 *.db-journal
+# Local credentials for scripts/e2e_workflow.py (never commit)
+.e2e.env

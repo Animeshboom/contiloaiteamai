@@ -1,6 +1,6 @@
 /** Artist-account helpers: CSV import upload, one-time credential CSV and printable login slips. */
 
-import { ApiError, auth } from "./api"
+import { API_BASE_URL, ApiError, auth } from "./api"
 import type { Credentials, ImportResult } from "./types"
 
 /**
@@ -15,7 +15,7 @@ export async function importArtistsCsv(file: File, teamId?: number | null): Prom
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`
   let res: Response
   try {
-    res = await fetch("/api/v1/artists/import", { method: "POST", headers, body: form })
+    res = await fetch(`${API_BASE_URL}/api/v1/artists/import`, { method: "POST", headers, body: form })
   } catch {
     throw new ApiError(0, "network", "Cannot reach the StudioTrack server. Is the API running?")
   }

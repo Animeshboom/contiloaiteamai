@@ -1,0 +1,63 @@
+# Production smoke test - run by hand after a deploy: Actions -> "Production smoke test" -> Run workflow.
+# Uses only public URLs, set once under Settings -> Secrets and variables -> Actions -> Variables:
+#   API_URL  e.g. https://studiotrack-api.onrender.com
+#   WEB_URL  e.g. https://studiotrack-ai.pages.dev
+# Read-only: it never signs in or writes data.
+name: Production smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      API_URL: ${{ vars.API_URL }}
+      WEB_URL: ${{ vars.WEB_URL }}
+    steps:
+      - name: Check variables
+        run: |
+          test -n "$API_URL" || { echo "::error::Set the API_URL repository variable"; exit 1; }
+          test -n "$WEB_URL" || { echo "::error::Set the WEB_URL repository variable"; exit 1; }
+      - name: API health (waits up to ~3 min for a sleeping free instance)
+        run: |
+          for i in $(seq 1 18); do
+            body=$(curl -s -m 20 "$API_URL/api/health" || true)
+            echo "attempt $i: $body"
+            echo "$body" | grep -q '"status":"ok"' && exit 0
+            sleep 10
+          done
+          echo "::error::API health check failed"; exit 1
+      - name: Frontend loads and nested routes fall back to the SPA (no 404 on refresh)
+        run: |
+          for path in / /login /admin /lead/reviews /artist/attendance; do
+            code=$(curl -s -o /tmp/page.html -w "%{http_code}" "$WEB_URL$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] && grep -q '<div id="root">' /tmp/page.html || { echo "::error::$path did not serve the app"; exit 1; }
+          done
+      - name: CORS allows the web app and rejects other origins
+        run: |
+          ok=$(curl -s -o /dev/null -D - -X OPTIONS "$API_URL/api/v1/auth/login" -H "Origin: $WEB_URL" \
+               -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type" | tr -d '\r' | grep -i '^access-control-allow-origin:' || true)
+          echo "web origin: $ok"
+          echo "$ok" | grep -qi "$WEB_URL" || { echo "::error::CORS does not allow $WEB_URL - check CORS_ORIGINS on Render"; exit 1; }
+          bad=$(curl -s -o /dev/null -D - -X OPTIONS "$API_URL/api/v1/auth/login" -H "Origin: https://not-allowed.example" \
+               -H "Access-Control-Request-Method: POST" | tr -d '\r' | grep -i '^access-control-allow-origin:' || true)
+          [ -z "$bad" ] || { echo "::error::CORS allows an unknown origin: $bad"; exit 1; }
+      - name: Auth endpoints respond correctly without credentials
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/api/v1/auth/me");            echo "/auth/me -> $code";  [ "$code" = "401" ]
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/api/v1/auth/login" \
+                 -H "Content-Type: application/json" -d '{"email":"not-an-email","password":""}'); echo "bad login body -> $code"; [ "$code" = "422" ]
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/docs");                       echo "/docs -> $code";      [ "$code" = "404" ]
+      - name: Frontend bundle points at this API
+        run: |
+          host=$(echo "$API_URL" | sed -E 's#^https?://##; s#/+$##')
+          : > /tmp/bundle.js
+          for js in $(curl -s "$WEB_URL/login" | grep -o '/assets/[A-Za-z0-9_-]*\.js' | sort -u); do curl -s "$WEB_URL$js" >> /tmp/bundle.js; done
+          grep -q "$host" /tmp/bundle.js || { echo "::error::Bundle does not reference $host - set VITE_API_BASE_URL in Cloudflare Pages and redeploy"; exit 1; }
+          echo "bundle references $host"
