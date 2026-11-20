@@ -85,9 +85,41 @@ class DailyReport(TimestampMixin, Base):
     delivery_status: Mapped[str | None] = mapped_column(String(40))
     gmail_message_id: Mapped[str | None] = mapped_column(String(200))
     gmail_draft_id: Mapped[str | None] = mapped_column(String(200))
+    # In-app reporting to the admin (works with email off): the lead adds issues and sends it.
+    auto_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    issues: Mapped[str | None] = mapped_column(Text)
+    submitted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    submitted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    admin_comment: Mapped[str | None] = mapped_column(Text)
+    admin_commented_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    admin_commented_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
     sent_by: Mapped[User | None] = relationship(foreign_keys=[sent_by_id])
+
+
+class ChatMessage(Base):
+    """A chat message in a group channel ("everyone", "leads" or "team:<id>"). Kept CHAT_RETENTION_DAYS."""
+    __tablename__ = "chat_messages"
+    __table_args__ = (Index("ix_chat_messages_channel_id", "channel", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False, index=True)
+    edited_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    deleted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class ChatRead(Base):
+    """How far each person has read in each chat (for unread counts)."""
+    __tablename__ = "chat_reads"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    channel: Mapped[str] = mapped_column(String(40), primary_key=True)
+    last_read_id: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class AuditLog(Base):

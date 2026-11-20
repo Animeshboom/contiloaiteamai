@@ -54,7 +54,7 @@ describe("ReviewsPage", () => {
     expect(partial).toBeDisabled()
     expect(screen.getByText(/Explain what needs revising/)).toBeInTheDocument()
 
-    await userEvent.type(screen.getByLabelText("Feedback for the artist"), "SC02 flickers at 00:04")
+    await userEvent.type(screen.getByLabelText("Feedback for the assignee"), "SC02 flickers at 00:04")
     expect(partial).toBeEnabled()
     await userEvent.click(partial)
 

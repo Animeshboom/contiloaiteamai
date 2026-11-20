@@ -41,21 +41,21 @@ def list_submissions(
 ):
     """Artists: own submissions. Leads: their team's. Admins: all. Pending queue is oldest-first."""
     rows = svc.list_for(db, user, status=status_, assignment_id=assignment_id, artist_id=artist_id, project_id=project_id)
-    return [svc.to_out(db, s) for s in rows]
+    return [svc.to_out(db, s, user) for s in rows]
 
 
 @router.post("/submissions", response_model=SubmissionOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_submission(request: Request, body: SubmissionCreate, background: BackgroundTasks,
                       user: User = Depends(require_artist), db: Session = Depends(get_db)):
-    out = svc.to_out(db, svc.create(db, user, body, client_ip(request)))
+    out = svc.to_out(db, svc.create(db, user, body, client_ip(request)), user)
     background.add_task(email_service.dispatch_pending)
     return out
 
 
 @router.get("/submissions/{submission_id}", response_model=SubmissionOut)
 def get_submission(submission_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return svc.to_out(db, svc.get_for_view(db, user, submission_id))
+    return svc.to_out(db, svc.get_for_view(db, user, submission_id), user)
 
 
 @router.post("/submissions/{submission_id}/attachments", response_model=SubmissionOut,
@@ -64,7 +64,7 @@ def get_submission(submission_id: int, user: User = Depends(get_current_user), d
 async def upload_attachment(request: Request, submission_id: int, file: UploadFile = File(...),
                             user: User = Depends(require_artist), db: Session = Depends(get_db)):
     sub = await svc.add_attachment(db, user, submission_id, file, client_ip(request))
-    return svc.to_out(db, sub)
+    return svc.to_out(db, sub, user)
 
 
 @router.get("/submissions/{submission_id}/attachments/{attachment_id}")
@@ -84,6 +84,6 @@ def download_attachment(submission_id: int, attachment_id: int, user: User = Dep
 def review_submission(submission_id: int, body: ReviewCreate, request: Request, background: BackgroundTasks,
                       user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
     """Approve (all or selected scenes) or reject with feedback. Each review is a new, permanent record."""
-    out = svc.to_out(db, svc.review(db, user, submission_id, body, client_ip(request)))
+    out = svc.to_out(db, svc.review(db, user, submission_id, body, client_ip(request)), user)
     background.add_task(email_service.dispatch_pending)
     return out

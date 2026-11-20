@@ -23,11 +23,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.core.security import hash_password
+from app.core.config import get_settings
 from app.models import RoleName, Team, User
+from app.services import identity
 from app.services.seed import seed_roles
 
-MIN_PASSWORD = 12
+MIN_PASSWORD = 8
 
 # env prefix, role, default display name, job title
 BOOTSTRAP_ACCOUNTS = [
@@ -41,6 +42,13 @@ def _find(db: Session, email: str) -> User | None:
     return db.scalar(select(User).where(func.lower(User.email) == email))
 
 
+def _link_if_needed(user: User, password: str) -> None:
+    """With Supabase Auth, an account created before the switch gets (or is linked to) a Supabase login."""
+    if get_settings().uses_supabase and not user.auth_user_id:
+        user.password_hash, user.auth_user_id = identity.create_login(user.email, password, link_existing=True)
+        print(f"Bootstrap: {user.email} linked to Supabase Auth.")
+
+
 def create(email: str, name: str, password: str, *, exist_ok: bool) -> None:
     """Create one administrator (interactive / ADMIN_* path)."""
     if len(password) < MIN_PASSWORD:
@@ -48,14 +56,17 @@ def create(email: str, name: str, password: str, *, exist_ok: bool) -> None:
     with SessionLocal() as db:
         roles = seed_roles(db)
         email = email.strip().lower()
-        if _find(db, email):
+        existing = _find(db, email)
+        if existing:
+            _link_if_needed(existing, password)
             db.commit()  # keep the seeded roles
             if exist_ok:
                 print(f"Bootstrap: {email} already exists, nothing to do.")
                 return
             sys.exit(f"A user with email {email} already exists.")
+        password_hash, auth_user_id = identity.create_login(email, password, link_existing=True)
         db.add(User(email=email, full_name=name.strip(), role_id=roles[RoleName.ADMIN].id,
-                    password_hash=hash_password(password), job_title="Administrator"))
+                    password_hash=password_hash, auth_user_id=auth_user_id, job_title="Administrator"))
         db.commit()
     print(f"Administrator {email} created.")
 
@@ -86,11 +97,14 @@ def bootstrap() -> None:
                 print(f"Bootstrap: team '{team_name}' created.")
 
         for role, email, name, password, title in wanted:
-            if _find(db, email):
+            existing = _find(db, email)
+            if existing:
+                _link_if_needed(existing, password)
                 print(f"Bootstrap: {email} already exists, nothing to do.")
                 continue
+            password_hash, auth_user_id = identity.create_login(email, password, link_existing=True)
             user = User(email=email, full_name=name.strip(), role_id=roles[role].id, job_title=title,
-                        password_hash=hash_password(password),
+                        password_hash=password_hash, auth_user_id=auth_user_id,
                         team_id=team.id if team is not None and role != RoleName.ADMIN else None)
             db.add(user)
             db.flush()
@@ -106,7 +120,20 @@ def main() -> None:
     parser.add_argument("--name")
     parser.add_argument("--bootstrap", action="store_true",
                         help="non-interactive: create ADMIN_/LEAD_/ARTIST_ accounts from env vars, skip existing")
+    parser.add_argument("--reset-two-step", metavar="EMAIL",
+                        help="turn off two-step login for this account (lost phone), so it can be set up again")
     args = parser.parse_args()
+
+    if args.reset_two_step:
+        with SessionLocal() as db:
+            u = _find(db, args.reset_two_step.strip().lower())
+            if not u:
+                sys.exit("No account with that email.")
+            u.totp_secret, u.totp_enabled = None, False
+            u.token_version += 1
+            db.commit()
+        print(f"Two-step login reset for {args.reset_two_step}. They set it up again at their next sign-in.")
+        return
 
     if args.bootstrap:
         bootstrap()

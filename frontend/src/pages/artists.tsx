@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { addDays, formatDate, formatMinutes, formatTime } from "@/lib/format"
-import { useRoster, useStaffOverview, useUserAttendance, useUsers } from "@/lib/queries"
+import { useRoster, useShowCheckinTimes, useStaffOverview, useUserAttendance, useUsers } from "@/lib/queries"
 import type { User } from "@/lib/types"
 
 export default function ArtistsPage() {
@@ -67,6 +67,7 @@ export default function ArtistsPage() {
 
 function ArtistAttendanceDialog({ user, onClose }: { user: User; onClose: () => void }) {
   const { config } = useAuth()
+  const showTimes = useShowCheckinTimes()
   const end = config?.studio_today
   const { data, isLoading } = useUserAttendance(user.id, { start: end ? addDays(end, -29) : undefined, end })
   return (
@@ -78,14 +79,16 @@ function ArtistAttendanceDialog({ user, onClose }: { user: User; onClose: () => 
         </DialogHeader>
         {isLoading ? <LoadingRows /> : !data?.length ? <EmptyState title="No attendance records in the last 30 days" /> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>In</TableHead><TableHead>Out</TableHead><TableHead>Worked</TableHead><TableHead>Note</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Status</TableHead>{showTimes && <><TableHead>In</TableHead><TableHead>Out</TableHead></>}<TableHead>Worked</TableHead><TableHead>Note</TableHead></TableRow></TableHeader>
             <TableBody>
               {data.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="whitespace-nowrap">{formatDate(r.work_date, true)}</TableCell>
                   <TableCell><AttendanceBadge status={r.status} /></TableCell>
-                  <TableCell className="font-mono tabular">{formatTime(r.check_in_at)}</TableCell>
-                  <TableCell className="font-mono tabular">{formatTime(r.check_out_at)}</TableCell>
+                  {showTimes && <>
+                    <TableCell className="font-mono tabular">{formatTime(r.check_in_at)}</TableCell>
+                    <TableCell className="font-mono tabular">{formatTime(r.check_out_at)}</TableCell>
+                  </>}
                   <TableCell className="font-mono tabular">{formatMinutes(r.worked_minutes)}</TableCell>
                   <TableCell className="max-w-[14rem] truncate text-xs text-muted-foreground">{r.notes ?? ""}</TableCell>
                 </TableRow>

@@ -75,7 +75,11 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_role_id'), 'users', ['role_id'], unique=False)
     op.create_index(op.f('ix_users_team_id'), 'users', ['team_id'], unique=False)
     # teams.lead_id <-> users.team_id is circular; add this FK once both tables exist.
-    op.create_foreign_key('fk_teams_lead_id_users', 'teams', 'users', ['lead_id'], ['id'], ondelete='SET NULL')
+    if op.get_bind().dialect.name == 'sqlite':
+        with op.batch_alter_table('teams') as batch_op:
+            batch_op.create_foreign_key('fk_teams_lead_id_users', 'users', ['lead_id'], ['id'], ondelete='SET NULL')
+    else:
+        op.create_foreign_key('fk_teams_lead_id_users', 'teams', 'users', ['lead_id'], ['id'], ondelete='SET NULL')
     op.create_table('attendance',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),

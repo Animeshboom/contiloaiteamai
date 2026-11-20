@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { api, errorMessage } from "./api"
+import { useAuth } from "./auth-context"
 import type {
-  AppNotification, ArtistOverview, Assignment, EmailLogEntry, Report, ReportListItem, ReportMetrics, Submission, AttendanceRecord, DailyCount, ProjectDetail, Project, Recipient, RosterRow,
-  StaffOverview, Team, TodayStatus, User,
+  ActivityEntry, AppNotification, FeedbackPhrase, LeadToday, WeeklyTarget, ArtistOverview, Assignment, EmailLogEntry, Report, ReportListItem, ReportMetrics, Submission, AttendanceRecord, DailyCount, ProjectDetail, Project, Recipient, RosterRow,
+  StaffOverview, Team, TodayStatus, User, Announcement, Holiday, Leave, MonthStats, TeamReportStatus,
 } from "./types"
 
 export const keys = {
@@ -30,6 +31,17 @@ export const keys = {
   reports: (f?: object) => ["reports", f ?? {}] as const,
   report: (id: number) => ["report", id] as const,
   reportMetrics: (f?: object) => ["report-metrics", f ?? {}] as const,
+  holidays: (f?: object) => ["holidays", f ?? {}] as const,
+  leave: (f?: object) => ["leave", "list", f ?? {}] as const,
+  myLeave: ["leave", "me"] as const,
+  myMonth: ["attendance", "me", "month"] as const,
+  announcements: (f?: object) => ["announcements", f ?? {}] as const,
+  myAnnouncements: ["announcements", "me"] as const,
+  teamReportStatus: (f?: object) => ["reports", "team-status", f ?? {}] as const,
+  activity: (f?: object) => ["activity", f ?? {}] as const,
+  leadToday: ["dashboard", "lead-today"] as const,
+  myTarget: ["dashboard", "my-target"] as const,
+  feedbackPhrases: ["feedback-phrases"] as const,
 }
 
 type Q = Record<string, string | number | boolean | undefined | null>
@@ -75,8 +87,45 @@ export const useReport = (id: number | undefined) =>
 export const useReportMetrics = (f: Q = {}) =>
   useQuery({ queryKey: keys.reportMetrics(f), queryFn: () => api.get<ReportMetrics>("/reports/metrics", f) })
 
+export const useTeamReportStatus = (f: Q = {}, enabled = true) =>
+  useQuery({ queryKey: keys.teamReportStatus(f), queryFn: () => api.get<TeamReportStatus[]>("/reports/team-status", f), enabled, refetchInterval: 60_000 })
+
+export const useMyMonth = () => useQuery({ queryKey: keys.myMonth, queryFn: () => api.get<MonthStats>("/attendance/me/month") })
+export const useLeave = (f: Q = {}, enabled = true) =>
+  useQuery({ queryKey: keys.leave(f), queryFn: () => api.get<Leave[]>("/leave", f), enabled, refetchInterval: 60_000 })
+export const useMyLeave = () => useQuery({ queryKey: keys.myLeave, queryFn: () => api.get<Leave[]>("/me/leave") })
+export const useAnnouncements = (f: Q = {}) =>
+  useQuery({ queryKey: keys.announcements(f), queryFn: () => api.get<Announcement[]>("/announcements", f) })
+export const useMyAnnouncements = () =>
+  useQuery({ queryKey: keys.myAnnouncements, queryFn: () => api.get<Announcement[]>("/me/announcements"), refetchInterval: 60_000, refetchOnWindowFocus: true })
+export const useLeadToday = (enabled = true) =>
+  useQuery({ queryKey: keys.leadToday, queryFn: () => api.get<LeadToday>("/lead/today"), enabled, refetchInterval: 60_000 })
+export const useMyTarget = () =>
+  useQuery({ queryKey: keys.myTarget, queryFn: () => api.get<WeeklyTarget>("/me/target"), refetchInterval: 300_000 })
+export const useFeedbackPhrases = (enabled = true) =>
+  useQuery({ queryKey: keys.feedbackPhrases, queryFn: () => api.get<FeedbackPhrase[]>("/feedback-phrases"), enabled, staleTime: 300_000 })
+
+export const ACTIVITY_PAGE = 100
+/** Audit trail, newest first; each next page asks for entries older than the last id seen. */
+export const useActivity = (f: Q = {}) =>
+  useInfiniteQuery({
+    queryKey: keys.activity(f),
+    queryFn: ({ pageParam }) => api.get<ActivityEntry[]>("/activity", { ...f, limit: ACTIVITY_PAGE, before_id: pageParam ?? undefined }),
+    initialPageParam: null as number | null,
+    getNextPageParam: (last) => (last.length < ACTIVITY_PAGE ? undefined : last[last.length - 1].id),
+  })
+export const useHolidays = (f: Q = {}) => useQuery({ queryKey: keys.holidays(f), queryFn: () => api.get<Holiday[]>("/holidays", f) })
+
+/** A holiday changes day-off status in rosters and dashboards. */
+export const HOLIDAY_KEYS = [["holidays"], ["attendance"], ["dashboard"]]
+/** A leave decision changes rosters, month stats, the lead's Today panel and reports. */
+export const LEAVE_KEYS = [["leave"], ["attendance"], ["dashboard"], ["notifications"]]
+
 /** Everything a submission or review can change. */
 export const WORK_KEYS = [["submissions"], ["submission"], ["assignments"], ["assignment"], ["dashboard"], ["project"], ["notifications"]]
+
+/** Studio setting: whether check-in / check-out clock times are shown anywhere (status always is). */
+export const useShowCheckinTimes = () => Boolean(useAuth().config?.show_checkin_times)
 
 /**
  * Mutation with toast feedback and cache invalidation.

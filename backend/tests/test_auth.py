@@ -114,20 +114,26 @@ def test_deactivated_user_cannot_login_or_use_existing_token(client, db):
 
 
 def test_change_password_revokes_old_tokens(client):
-    old = login(client, ARTIST)
+    old = login(client, LEAD)
     r = client.post("/api/v1/auth/change-password", headers=old,
-                    json={"current_password": password_for(ARTIST), "new_password": "NewPassw0rd!"})
+                    json={"current_password": password_for(LEAD), "new_password": "NewPassw0rd!"})
     assert r.status_code == 200
     new = {"Authorization": f"Bearer {r.json()['access_token']}"}
     assert client.get("/api/v1/auth/me", headers=old).status_code == 401
     assert client.get("/api/v1/auth/me", headers=new).status_code == 200
-    login(client, ARTIST, "NewPassw0rd!")
+    login(client, LEAD, "NewPassw0rd!")
 
 
-def test_change_password_requires_correct_current(client, as_artist):
-    r = client.post("/api/v1/auth/change-password", headers=as_artist,
+def test_change_password_requires_correct_current(client, as_lead):
+    r = client.post("/api/v1/auth/change-password", headers=as_lead,
                     json={"current_password": "wrong", "new_password": "NewPassw0rd!"})
     assert r.status_code == 422
+
+
+def test_artists_cannot_change_their_own_password(client, as_artist):
+    r = client.post("/api/v1/auth/change-password", headers=as_artist,
+                    json={"current_password": password_for(ARTIST), "new_password": "NewPassw0rd!"})
+    assert r.status_code == 403  # the admin resets artists' passwords
 
 
 @pytest.mark.parametrize("who,admin_code,lead_code", [(ADMIN, 200, 200), (LEAD, 403, 200), (ARTIST, 403, 403)])

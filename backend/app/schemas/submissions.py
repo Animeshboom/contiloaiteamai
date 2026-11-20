@@ -39,6 +39,7 @@ class SubmissionCreate(BaseModel):
 class ReviewCreate(BaseModel):
     decision: ReviewDecision
     feedback: str | None = Field(default=None, max_length=5000)
+    rating: int | None = Field(default=None, ge=1, le=5)  # private quality score (leads/admins only)
     # For approvals: which scenes to approve (default all). Any others are rejected and need feedback.
     approved_scene_ids: list[int] | None = Field(default=None, max_length=200)
 
@@ -66,6 +67,7 @@ class ReviewOut(BaseModel):
     reviewer_name: str
     decision: ReviewDecision
     feedback: str | None
+    rating: int | None = None  # only returned to leads and admins
     approved_scene_ids: list[int]
     created_at: datetime
 

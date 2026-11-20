@@ -13,6 +13,8 @@ from app.models import (
     Assignment, AssignmentAssignee, Episode, Project, RoleName, Scene, Team, User,
 )
 
+WORKERS = (RoleName.ARTIST,)  # roles that can be given assignments
+
 
 def is_admin(user: User) -> bool:
     return user.role_name == RoleName.ADMIN
@@ -20,6 +22,10 @@ def is_admin(user: User) -> bool:
 
 def is_lead(user: User) -> bool:
     return user.role_name == RoleName.TEAM_LEAD
+
+
+def is_worker(user: User) -> bool:
+    return user.role_name in WORKERS
 
 
 def lead_team_ids(db: Session, user: User) -> set[int]:
@@ -53,7 +59,7 @@ def ensure_can_manage_artist(db: Session, actor: User, artist: User) -> None:
     """For assigning work / correcting attendance."""
     if is_admin(actor):
         return
-    if is_lead(actor) and artist.team_id in lead_team_ids(db, actor):
+    if is_lead(actor) and artist.team_id is not None and artist.team_id in lead_team_ids(db, actor):
         return
     raise Forbidden(f"{artist.full_name} is not a member of your team")
 
@@ -62,7 +68,7 @@ def ensure_can_manage_artist(db: Session, actor: User, artist: User) -> None:
 
 def project_query(db: Session, user: User):
     q = select(Project).where(Project.deleted_at.is_(None))
-    if user.role_name == RoleName.ARTIST:
+    if is_worker(user):
         assigned = (
             select(Assignment.project_id)
             .join(AssignmentAssignee, AssignmentAssignee.assignment_id == Assignment.id)

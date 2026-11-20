@@ -124,13 +124,18 @@ class _McpCaller:
     async def call(self, tool: str, args: dict) -> DeliveryResult:
         if tool not in TOOLS:
             raise GatewayError("blocked", f"Unknown tool {tool}")
-        res = await self.session.call_tool(tool, args, read_timeout_seconds=timedelta(seconds=60))
-        text = "\n".join(getattr(c, "text", "") for c in res.content)
-        if res.isError:
-            raise _parse_error(text)
-        if res.structuredContent:
-            return _result(res.structuredContent)
-        return _result(json.loads(text or "{}"))
+        try:
+            res = await self.session.call_tool(tool, args, read_timeout_seconds=timedelta(seconds=60))
+            text = "\n".join(getattr(c, "text", "") for c in res.content)
+            if res.isError:
+                raise _parse_error(text)
+            if res.structuredContent:
+                return _result(res.structuredContent)
+            return _result(json.loads(text or "{}"))
+        except GatewayError:
+            raise
+        except Exception as e:  # timeouts (McpError), malformed replies, dropped connections: try again later
+            raise GatewayError("retryable", f"{type(e).__name__}: {e}") from e
 
 
 @asynccontextmanager

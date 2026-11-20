@@ -19,13 +19,14 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int, role: str, token_version: int) -> str:
+def create_access_token(user_id: int, role: str, token_version: int, aal: str = "aal1") -> str:
     s = get_settings()
     now = utcnow()
     payload = {
         "sub": str(user_id),
         "role": role,  # informational only; the server always re-reads role from DB
         "tv": token_version,
+        "aal": aal,  # aal2 = signed in with password + two-step code
         "iat": now,
         "exp": now + timedelta(minutes=s.access_token_expire_minutes),
         "type": "access",
@@ -33,6 +34,25 @@ def create_access_token(user_id: int, role: str, token_version: int) -> str:
     return jwt.encode(payload, s.jwt_secret_key, algorithm=s.jwt_algorithm)
 
 
+def create_mfa_token(user_id: int, token_version: int) -> str:
+    """Short-lived ticket between the password step and the two-step code step."""
+    s = get_settings()
+    now = utcnow()
+    payload = {"sub": str(user_id), "tv": token_version, "iat": now, "exp": now + timedelta(minutes=5), "type": "mfa"}
+    return jwt.encode(payload, s.jwt_secret_key, algorithm=s.jwt_algorithm)
+
+
 def decode_access_token(token: str) -> dict:
     s = get_settings()
-    return jwt.decode(token, s.jwt_secret_key, algorithms=[s.jwt_algorithm], options={"require": ["sub", "exp"]})
+    payload = jwt.decode(token, s.jwt_secret_key, algorithms=[s.jwt_algorithm], options={"require": ["sub", "exp"]})
+    if payload.get("type", "access") != "access":
+        raise jwt.InvalidTokenError("Not an access token")
+    return payload
+
+
+def decode_mfa_token(token: str) -> dict:
+    s = get_settings()
+    payload = jwt.decode(token, s.jwt_secret_key, algorithms=[s.jwt_algorithm], options={"require": ["sub", "exp"]})
+    if payload.get("type") != "mfa":
+        raise jwt.InvalidTokenError("Not a two-step ticket")
+    return payload

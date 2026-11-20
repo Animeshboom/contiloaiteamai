@@ -1,17 +1,17 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { CheckCheck, Gauge, Pencil, Send, Trash2 } from "lucide-react"
+import { ArrowRightLeft, CheckCheck, Gauge, Pencil, Send, Trash2 } from "lucide-react"
 
 import { AssignmentFormDialog } from "@/components/assignment-form"
 import { AssignmentStatusBadge, PriorityBadge, SceneChip } from "@/components/common"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SceneStateChip, SceneStateLegend } from "@/components/submission-view"
-import { Field, Textarea } from "@/components/ui/form-controls"
+import { Field, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { api } from "@/lib/api"
 import { formatDate, formatDateTime, relativeDeadline } from "@/lib/format"
-import { WORK_KEYS, useAction } from "@/lib/queries"
-import type { Assignment } from "@/lib/types"
+import { WORK_KEYS, useAction, useUsers } from "@/lib/queries"
+import type { Assignee, Assignment } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
@@ -34,9 +34,11 @@ export function AssignmentDetailDialog({ assignment: a, onClose, canManage, view
   const dl = relativeDeadline(a.deadline)
   const mine = a.assignees.find((x) => x.user_id === viewerId)
   const myStatus = canManage ? a.status : mine?.status ?? a.status
-  const done = myStatus === "approved" || myStatus === "completed"
+  // A reassigned slot is closed for its old holder: no more progress or submissions.
+  const done = myStatus === "approved" || myStatus === "completed" || myStatus === "reassigned"
   const assignees = canManage ? a.assignees : a.assignees.filter((x) => x.user_id === viewerId)
   const [progressOpen, setProgressOpen] = useState(false)
+  const [reassignFrom, setReassignFrom] = useState<Assignee | null>(null)
   const complete = useAction(() => api.post(`/assignments/${a.id}/complete`), {
     success: "Assignment marked completed", invalidate: WORK_KEYS,
   })
@@ -75,7 +77,7 @@ export function AssignmentDetailDialog({ assignment: a, onClose, canManage, view
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{canManage ? "Artists" : "Your progress"}</div>
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{canManage ? "Assignees" : "Your progress"}</div>
               {a.scenes.length > 0 && <SceneStateLegend />}
             </div>
             <div className="space-y-2">
@@ -84,7 +86,14 @@ export function AssignmentDetailDialog({ assignment: a, onClose, canManage, view
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                     <span className="font-medium">{x.full_name}</span>
                     <AssignmentStatusBadge status={x.status} />
-                    <span className="text-xs text-muted-foreground" title="Artist's own estimate — not an approval">Reported {x.reported_progress_pct}%</span>
+                    <span className="text-xs text-muted-foreground" title="Their own estimate — not an approval">Reported {x.reported_progress_pct}%</span>
+                    {canManage && (
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                        disabled={["approved", "completed", "reassigned"].includes(x.status)}
+                        onClick={() => setReassignFrom(x)} aria-label={`Reassign ${x.full_name}`}>
+                        <ArrowRightLeft />Reassign
+                      </Button>
+                    )}
                     {a.scenes.length > 0 && (
                       <span className="ml-auto font-mono text-xs">
                         <span className="text-success">{x.scenes_approved}</span>/{a.scenes.length} approved · {x.scenes_submitted} submitted
@@ -100,7 +109,7 @@ export function AssignmentDetailDialog({ assignment: a, onClose, canManage, view
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">Only scenes approved by a lead count as complete. Reported progress is the artist's own estimate.</p>
+            <p className="mt-2 text-[11px] text-muted-foreground">Only scenes approved by a lead count as complete. Reported progress is the assignee's own estimate.</p>
           </div>
 
           {!canManage && mine && (
@@ -125,11 +134,12 @@ export function AssignmentDetailDialog({ assignment: a, onClose, canManage, view
       </Dialog>
 
       {editing && <AssignmentFormDialog open assignment={a} onOpenChange={(o) => { if (!o) setEditing(false) }} onSaved={onClose} />}
+      {reassignFrom && <ReassignDialog assignment={a} from={reassignFrom} onClose={() => setReassignFrom(null)} />}
       {progressOpen && mine && <ProgressDialog assignmentId={a.id} current={mine.reported_progress_pct} note={mine.progress_note} onClose={() => setProgressOpen(false)} />}
       <ConfirmDialog
         open={confirmDelete} onOpenChange={setConfirmDelete} destructive loading={del.isPending}
         title="Delete this assignment?" confirmLabel="Delete"
-        description="It will be removed from artists' task lists. The record is kept in the audit log."
+        description="It will be removed from assignees' task lists. The record is kept in the audit log."
         onConfirm={() => del.mutate(undefined)}
       />
     </>
@@ -159,6 +169,50 @@ function ProgressDialog({ assignmentId, current, note, onClose }: { assignmentId
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" loading={save.isPending}>Save progress</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ReassignDialog({ assignment: a, from, onClose }: { assignment: Assignment; from: Assignee; onClose: () => void }) {
+  const artists = useUsers({ role: "artist" })
+  const taken = new Set(a.assignees.filter((x) => x.status !== "reassigned").map((x) => x.user_id))
+  const [to, setTo] = useState("")
+  const [note, setNote] = useState("")
+  const save = useAction(
+    () => api.post<Assignment>(`/assignments/${a.id}/reassign`, {
+      from_user_id: from.user_id, to_user_id: Number(to), ...(note.trim() ? { note: note.trim() } : {}),
+    }),
+    { success: "Assignment reassigned", invalidate: WORK_KEYS, onSuccess: onClose },
+  )
+  const freeArtists = (artists.data ?? []).filter((u) => !taken.has(u.id))
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <form onSubmit={(e) => { e.preventDefault(); save.mutate(undefined) }} className="grid gap-4">
+          <DialogHeader>
+            <DialogTitle>Reassign from {from.full_name}</DialogTitle>
+            <DialogDescription>
+              {from.scenes_submitted > 0
+                ? "They have already submitted work, so their slot stays in the history as Reassigned."
+                : "They haven't submitted anything yet, so they are removed from this assignment."}
+            </DialogDescription>
+          </DialogHeader>
+          <Field label="New person" htmlFor="ra-to">
+            <NativeSelect id="ra-to" required value={to} onChange={(e) => setTo(e.target.value)}>
+              <option value="">Choose…</option>
+              {freeArtists.map((u) => <option key={u.id} value={u.id}>{u.full_name}{u.employee_code ? ` · ${u.employee_code}` : ""}</option>)}
+            </NativeSelect>
+          </Field>
+          <Field label="Note (optional)" htmlFor="ra-note">
+            <Textarea id="ra-note" rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Arjun is on leave this week" />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={save.isPending} disabled={!to}>Reassign</Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -25,7 +25,10 @@ LEASE = timedelta(minutes=5)
 def enqueue(db: Session, *, tool: str, args: dict, idempotency_key: str, recipients: list[str], subject: str,
             preview: str, entity_type: str | None = None, entity_id: int | None = None,
             triggered_by_id: int | None = None) -> EmailLog | None:
-    """Queue an email. Returns None if this exact email was already queued (idempotent)."""
+    """Queue an email. Returns None if this exact email was already queued (idempotent), or if email is
+    turned off (EMAIL_ENABLED=false): notifications are then in-app only and nothing is queued."""
+    if not get_settings().email_enabled:
+        return None
     existing = db.scalar(select(EmailLog).where(EmailLog.idempotency_key == idempotency_key))
     if existing:
         return None
@@ -73,6 +76,27 @@ def _record_success(row: EmailLog, res: DeliveryResult) -> None:
     row.error = None
 
 
+def _give_up_abandoned(db: Session) -> None:
+    """Rows claimed for their last attempt whose dispatcher died mid-batch stay PENDING with no attempts
+    left, so nothing would ever pick them up again. Mark them FAILED so an admin can see and retry them."""
+    abandoned = db.scalars(select(EmailLog).where(
+        EmailLog.status == EmailStatus.PENDING,
+        EmailLog.attempts >= get_settings().email_max_attempts,
+        EmailLog.next_attempt_at <= utcnow(),
+    )).all()
+    for row in abandoned:
+        row.status = EmailStatus.FAILED
+        row.next_attempt_at = None
+        row.error = row.error or "failed: delivery was interrupted on every attempt"
+    if abandoned:
+        db.commit()
+        log.error("gave up on %d interrupted email(s)", len(abandoned))
+
+
+def _as_gateway_error(e: Exception) -> GatewayError:
+    return e if isinstance(e, GatewayError) else GatewayError("retryable", f"{type(e).__name__}: {e}")
+
+
 def _record_failure(row: EmailLog, err: GatewayError) -> None:
     row.error = f"{err.kind}: {err}"[:2000]
     if err.kind == "blocked":
@@ -87,12 +111,14 @@ def _record_failure(row: EmailLog, err: GatewayError) -> None:
 async def dispatch_pending(limit: int = 25, only_id: int | None = None) -> dict[str, int]:
     """Deliver due emails. Safe to call concurrently and repeatedly."""
     stats = {"sent": 0, "failed": 0, "blocked": 0}
-    if not get_settings().email_configured:
+    if not get_settings().email_enabled or not get_settings().email_configured:
         return stats  # Gmail not set up yet: leave emails pending (not failed) until it is
     with SessionLocal() as db:
+        _give_up_abandoned(db)
         rows = _claim(db, limit, only_id)
         if not rows:
             return stats
+        done: set[int] = set()
         try:
             async with open_gateway() as gw:
                 for row in rows:
@@ -100,18 +126,21 @@ async def dispatch_pending(limit: int = 25, only_id: int | None = None) -> dict[
                         res = await gw.call(row.tool_name, {**row.payload, "idempotency_key": row.idempotency_key})
                         _record_success(row, res)
                         stats["sent"] += 1
-                    except GatewayError as e:
-                        _record_failure(row, e)
-                        stats["blocked" if e.kind == "blocked" else "failed"] += 1
+                    except Exception as e:  # never let one email strand the rest of the batch
+                        err = _as_gateway_error(e)
+                        _record_failure(row, err)
+                        stats["blocked" if err.kind == "blocked" else "failed"] += 1
                         log.warning("email %s (%s) %s", row.id, row.tool_name, row.error)
+                    done.add(row.id)
                     db.commit()
-        except GatewayError as e:  # could not open the gateway at all
+        except Exception as e:  # could not open (or cleanly close) the gateway
+            err = _as_gateway_error(e)
             for row in rows:
-                if row.status in (EmailStatus.PENDING, EmailStatus.FAILED) and row.sent_at is None:
-                    _record_failure(row, e)
+                if row.id not in done:
+                    _record_failure(row, err)
                     stats["failed"] += 1
             db.commit()
-            log.error("email gateway unavailable: %s", e)
+            log.error("email gateway unavailable: %s", err)
     return stats
 
 

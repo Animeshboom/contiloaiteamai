@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/misc"
 import { errorMessage } from "@/lib/api"
 import { titleCase } from "@/lib/format"
-import type { AssignmentStatus, AttendanceStatus, Priority, ProjectStatus, WorkStatus } from "@/lib/types"
+import type { AssignmentStatus, AttendanceStatus, LeaveStatus, Priority, ProjectStatus, WorkStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
@@ -75,21 +75,27 @@ type Tone = "neutral" | "amber" | "blue" | "green" | "red" | "yellow"
 
 const ASSIGNMENT_TONE: Record<AssignmentStatus, Tone> = {
   assigned: "neutral", in_progress: "blue", submitted: "amber", approved: "green", revision_required: "red", completed: "green",
+  reassigned: "neutral",
 }
 const ASSIGNMENT_LABEL: Record<AssignmentStatus, string> = {
   assigned: "Assigned", in_progress: "In Progress", submitted: "In Review", approved: "Approved",
-  revision_required: "Revision Required", completed: "Completed",
+  revision_required: "Revision Required", completed: "Completed", reassigned: "Reassigned",
 }
 export function AssignmentStatusBadge({ status }: { status: AssignmentStatus }) {
   return <Badge tone={ASSIGNMENT_TONE[status]} dot>{ASSIGNMENT_LABEL[status]}</Badge>
 }
 export const assignmentStatusLabel = (s: AssignmentStatus) => ASSIGNMENT_LABEL[s]
 
-const ATTENDANCE_TONE: Record<AttendanceStatus | "not_checked_in", Tone> = {
-  present: "green", half_day: "yellow", leave: "blue", absent: "red", not_checked_in: "neutral",
+const ATTENDANCE_TONE: Record<AttendanceStatus | "not_checked_in" | "day_off", Tone> = {
+  present: "green", half_day: "yellow", leave: "blue", absent: "red", not_checked_in: "neutral", day_off: "neutral",
 }
-export function AttendanceBadge({ status }: { status: AttendanceStatus | "not_checked_in" }) {
-  return <Badge tone={ATTENDANCE_TONE[status]} dot>{status === "not_checked_in" ? "Not checked in" : titleCase(status)}</Badge>
+export function AttendanceBadge({ status }: { status: AttendanceStatus | "not_checked_in" | "day_off" }) {
+  return <Badge tone={ATTENDANCE_TONE[status]} dot>{status === "not_checked_in" ? "Not checked in" : status === "day_off" ? "Day off" : titleCase(status)}</Badge>
+}
+
+const LEAVE_TONE: Record<LeaveStatus, Tone> = { pending: "yellow", approved: "green", rejected: "red", cancelled: "neutral" }
+export function LeaveStatusBadge({ status }: { status: LeaveStatus }) {
+  return <Badge tone={LEAVE_TONE[status] ?? "neutral"}>{titleCase(status)}</Badge>
 }
 
 const PRIORITY_TONE: Record<Priority, Tone> = { low: "neutral", medium: "blue", high: "amber", urgent: "red" }

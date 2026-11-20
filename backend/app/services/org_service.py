@@ -3,13 +3,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
-from app.core.security import hash_password
 from app.core.timeutils import utcnow
 from app.models import AuthorizedRecipient, Role, RoleName, Team, User
 from app.schemas.org import (
     RecipientCreate, RecipientUpdate, TeamCreate, TeamOut, TeamUpdate, UserBrief, UserCreate, UserUpdate,
 )
-from app.services import audit, scope
+from app.services import audit, identity, scope, security_service
 
 
 def _user_snapshot(u: User) -> dict:
@@ -39,8 +38,9 @@ def list_users(db: Session, actor: User, *, role: RoleName | None = None, team_i
     ids = scope.visible_user_ids(db, actor)
     if ids is not None:
         q = q.where(User.id.in_(ids))
+    q = q.join(Role)
     if role:
-        q = q.join(Role).where(Role.name == role)
+        q = q.where(Role.name == role)
     if team_id:
         q = q.where(User.team_id == team_id)
     if not include_inactive:
@@ -65,9 +65,10 @@ def create_user(db: Session, actor: User, data: UserCreate, ip: str | None) -> U
         raise Conflict("An account with this email already exists")
     if data.team_id:
         _team(db, data.team_id)
+    password_hash, auth_user_id = identity.create_login(email, data.password)
     u = User(
         email=email, full_name=data.full_name, role_id=_role(db, data.role).id, team_id=data.team_id,
-        job_title=data.job_title, password_hash=hash_password(data.password),
+        job_title=data.job_title, password_hash=password_hash, auth_user_id=auth_user_id,
     )
     db.add(u)
     db.flush()
@@ -114,6 +115,7 @@ def set_active(db: Session, actor: User, user_id: int, active: bool, ip: str | N
         return u
     u.is_active = active
     u.token_version += 1
+    identity.set_login_enabled(u, active)
     if not active:
         for t in db.scalars(select(Team).where(Team.lead_id == u.id)):
             t.lead_id = None
@@ -125,10 +127,33 @@ def set_active(db: Session, actor: User, user_id: int, active: bool, ip: str | N
 
 def reset_password(db: Session, actor: User, user_id: int, new_password: str, ip: str | None) -> None:
     u = get_user(db, actor, user_id)
-    u.password_hash = hash_password(new_password)
+    identity.set_password(u, new_password)
     u.token_version += 1
+    security_service.unlock(u)
     audit.record(db, actor_id=actor.id, action="user.password_reset", entity_type="user", entity_id=u.id, ip=ip)
+    security_service.check_bulk(db, actor, "user.password_reset")
     db.commit()
+
+
+def unlock(db: Session, actor: User, user_id: int, ip: str | None) -> User:
+    u = get_user(db, actor, user_id)
+    security_service.unlock(u)
+    audit.record(db, actor_id=actor.id, action="user.unlock", entity_type="user", entity_id=u.id, ip=ip)
+    db.commit()
+    db.refresh(u)
+    return u
+
+
+def reset_two_step(db: Session, actor: User, user_id: int, ip: str | None) -> User:
+    u = get_user(db, actor, user_id)
+    if u.id == actor.id:
+        raise ValidationFailed("Use the setup screen to change your own two-step login")
+    u.totp_secret, u.totp_enabled = None, False
+    u.token_version += 1
+    audit.record(db, actor_id=actor.id, action="user.mfa_reset", entity_type="user", entity_id=u.id, ip=ip)
+    db.commit()
+    db.refresh(u)
+    return u
 
 
 # ---------------- teams ----------------

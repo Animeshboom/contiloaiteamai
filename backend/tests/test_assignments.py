@@ -154,3 +154,22 @@ def test_dashboards_reflect_real_data(client, as_lead, as_artist, db):
     me = client.get("/api/v1/dashboard/me", headers=as_artist).json()
     assert me["open_assignments"] == 1 and me["attendance"]["can_check_out"] is True
     assert client.get("/api/v1/dashboard/overview", headers=as_artist).status_code == 403
+
+
+def test_list_returns_open_work_before_finished_history(client, as_lead, db):
+    """With more history than the list limit, new and open assignments must never be cut off."""
+    from app.models import Assignment
+    from app.services import assignment_service
+    old = _create(client, as_lead, db, deadline=(utcnow() + timedelta(hours=2)).isoformat()).json()
+    new = _create(client, as_lead, db, deadline=(utcnow() + timedelta(days=5)).isoformat()).json()
+    a = db.get(Assignment, old["id"])
+    a.status = S.COMPLETED  # finished work with the soonest deadline used to sort first
+    db.commit()
+
+    lead = db.get(__import__("app.models", fromlist=["User"]).User, uid(db, "lead.anim@studiotrack.demo"))
+    rows = assignment_service.list_for(db, lead)
+    statuses = [r.status in assignment_service.DONE for r in rows]
+    assert statuses == sorted(statuses)  # every open one comes before every finished one
+    top = assignment_service.list_for(db, lead, limit=1)
+    assert top[0].status not in assignment_service.DONE
+    assert new["id"] in [r.id for r in assignment_service.list_for(db, lead, limit=len(rows) - 1)]

@@ -1,16 +1,96 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/theme-init.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <title>StudioTrack AI</title>
+    <title>Contiloe StudioTrack AI — Production Platform</title>
+      <!-- Shown until the app starts (React replaces #root). Inline so it appears instantly. -->
+    <style>
+/* Shape loader (after a Uiverse.io design by mobinkakei). Class names are prefixed "st-" to avoid clashes. */
+.st-loaders { display: flex; align-items: center; }
+.st-loader {
+  --path: #2f3545;
+  --dot: #5628ee;
+  --duration: 3s;
+  width: 44px;
+  height: 44px;
+  position: relative;
+  display: inline-block;
+  margin: 0 16px;
+}
+.dark .st-loader { --path: #cfd5e6; --dot: #8b6cff; }
+.st-loader:before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  position: absolute;
+  display: block;
+  background: var(--dot);
+  top: 37px;
+  left: 19px;
+  transform: translate(-18px, -18px);
+  animation: st-dotRect var(--duration) cubic-bezier(0.785, 0.135, 0.15, 0.86) infinite;
+}
+.st-loader svg { display: block; width: 100%; height: 100%; }
+.st-loader svg rect,
+.st-loader svg polygon,
+.st-loader svg circle {
+  fill: none;
+  stroke: var(--path);
+  stroke-width: 10px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.st-loader svg polygon {
+  stroke-dasharray: 145 76 145 76;
+  stroke-dashoffset: 0;
+  animation: st-pathTriangle var(--duration) cubic-bezier(0.785, 0.135, 0.15, 0.86) infinite;
+}
+.st-loader svg rect {
+  stroke-dasharray: 192 64 192 64;
+  stroke-dashoffset: 0;
+  animation: st-pathRect var(--duration) cubic-bezier(0.785, 0.135, 0.15, 0.86) infinite;
+}
+.st-loader svg circle {
+  stroke-dasharray: 150 50 150 50;
+  stroke-dashoffset: 75;
+  animation: st-pathCircle var(--duration) cubic-bezier(0.785, 0.135, 0.15, 0.86) infinite;
+}
+.st-loader.st-triangle { width: 48px; }
+.st-loader.st-triangle:before {
+  left: 21px;
+  transform: translate(-10px, -18px);
+  animation: st-dotTriangle var(--duration) cubic-bezier(0.785, 0.135, 0.15, 0.86) infinite;
+}
+@keyframes st-pathTriangle { 33% { stroke-dashoffset: 74; } 66% { stroke-dashoffset: 147; } 100% { stroke-dashoffset: 221; } }
+@keyframes st-dotTriangle { 33% { transform: translate(0, 0); } 66% { transform: translate(10px, -18px); } 100% { transform: translate(-10px, -18px); } }
+@keyframes st-pathRect { 25% { stroke-dashoffset: 64; } 50% { stroke-dashoffset: 128; } 75% { stroke-dashoffset: 192; } 100% { stroke-dashoffset: 256; } }
+@keyframes st-dotRect { 25% { transform: translate(0, 0); } 50% { transform: translate(18px, -18px); } 75% { transform: translate(0, -36px); } 100% { transform: translate(-18px, -18px); } }
+@keyframes st-pathCircle { 25% { stroke-dashoffset: 125; } 50% { stroke-dashoffset: 175; } 75% { stroke-dashoffset: 225; } 100% { stroke-dashoffset: 275; } }
+@media (prefers-reduced-motion: reduce) {
+  .st-loader:before, .st-loader svg * { animation: none !important; }
+}
+
+.st-boot { min-height: 100vh; display: grid; place-items: center; background: #ffffff; font-family: Inter, system-ui, sans-serif; }
+.dark .st-boot { background: oklch(0.17 0.006 260); }
+.st-boot span { display: block; margin-top: 16px; text-align: center; font-size: 12px; color: #6b7280; }
+.dark .st-boot span { color: #9aa3b5; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="st-boot" role="status" aria-live="polite"><div>
+      <div class="st-loaders" aria-hidden="true">
+        <div class="st-loader"><svg viewBox="0 0 80 80"><circle r="32" cy="40" cx="40"></circle></svg></div>
+        <div class="st-loader st-triangle"><svg viewBox="0 0 86 80"><polygon points="43 8 79 72 7 72"></polygon></svg></div>
+        <div class="st-loader"><svg viewBox="0 0 80 80"><rect height="64" width="64" y="8" x="8"></rect></svg></div>
+      </div><span>Loading StudioTrack…</span></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

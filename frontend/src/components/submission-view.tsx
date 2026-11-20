@@ -91,11 +91,11 @@ export function SubmissionBody({ sub, showArtist = true, onOpenSubmission }: {
         <div className="flex flex-wrap gap-1.5">
           {sub.deliverables.map((d) => <SceneStateChip key={d.id} label={d.label} state={d.status} />)}
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">Artist reported {sub.scenes_completed_count} scene{sub.scenes_completed_count === 1 ? "" : "s"} completed.</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Submitter reported {sub.scenes_completed_count} scene{sub.scenes_completed_count === 1 ? "" : "s"} completed.</p>
       </Section>
 
       <Section title="Work description"><p className="whitespace-pre-wrap text-sm">{sub.work_description}</p></Section>
-      {sub.comments && <Section title="Artist comments"><p className="whitespace-pre-wrap text-sm text-muted-foreground">{sub.comments}</p></Section>}
+      {sub.comments && <Section title="Submitter comments"><p className="whitespace-pre-wrap text-sm text-muted-foreground">{sub.comments}</p></Section>}
 
       {sub.output_links.length > 0 && (
         <Section title="Output links">
@@ -136,6 +136,7 @@ export function SubmissionBody({ sub, showArtist = true, onOpenSubmission }: {
                     ? <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="size-3.5" />Approved</span>
                     : <span className="inline-flex items-center gap-1 text-destructive"><XCircle className="size-3.5" />Revision requested</span>}
                   <span className="text-muted-foreground">by {r.reviewer_name} · {formatDateTime(r.created_at)}</span>
+                  {r.rating != null && <span className="font-mono text-primary" aria-label={`Rated ${r.rating} of 5`}>{"★".repeat(r.rating)}<span className="text-muted-foreground/50">{"★".repeat(5 - r.rating)}</span></span>}
                 </div>
                 {r.decision === "rejected" && r.approved_scene_ids.length > 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">

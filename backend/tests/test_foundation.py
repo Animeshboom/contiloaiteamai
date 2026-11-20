@@ -20,7 +20,7 @@ def test_seed_is_idempotent(db):
     seed_demo(db)
     seed_demo(db)
     assert db.scalar(select(func.count(User.id))) == before == 8
-    assert db.scalar(select(func.count(Role.id))) == 3
+    assert db.scalar(select(func.count(Role.id))) == 3  # admin, team lead, artist
 
 
 def test_seed_links_team_leads(db):
@@ -104,7 +104,7 @@ def test_create_admin_script(db, monkeypatch, capsys):
         create_admin.main()
     monkeypatch.setenv("ADMIN_PASSWORD", "short")
     monkeypatch.setattr("sys.argv", ["create_admin", "--email", "x@example.com", "--name", "X"])
-    with pytest.raises(SystemExit, match="at least 12"):
+    with pytest.raises(SystemExit, match="at least 8"):
         create_admin.main()
 
 
@@ -144,5 +144,5 @@ def test_bootstrap_rejects_short_password(monkeypatch):
     monkeypatch.setattr("sys.argv", ["create_admin", "--bootstrap"])
     monkeypatch.setenv("LEAD_EMAIL", "lead@example.com")
     monkeypatch.setenv("LEAD_PASSWORD", "short")
-    with pytest.raises(SystemExit, match="LEAD_PASSWORD must be at least 12"):
+    with pytest.raises(SystemExit, match="LEAD_PASSWORD must be at least 8"):
         create_admin.main()

@@ -21,6 +21,14 @@ class ReportUpdate(BaseModel):
     recipients: list[EmailStr] | None = Field(default=None, max_length=50)
 
 
+class ReportSubmit(BaseModel):
+    issues: str | None = Field(default=None, max_length=10_000)  # issues / remarks for the admin
+
+
+class ReportComment(BaseModel):
+    comment: str = Field(min_length=1, max_length=5000)
+
+
 class ReportApprove(BaseModel):
     recipients: list[EmailStr] = Field(min_length=1, max_length=50)
 
@@ -40,6 +48,13 @@ class ReportListItem(BaseModel):
     sent_by_name: str | None
     delivery_status: str | None
     filters: dict
+    auto_generated: bool = False
+    issues: str | None = None
+    submitted_at: datetime | None = None
+    submitted_by_name: str | None = None
+    admin_comment: str | None = None
+    admin_commented_at: datetime | None = None
+    admin_commented_by_name: str | None = None
 
 
 class ReportOut(ReportListItem):

@@ -35,6 +35,11 @@ class Conflict(AppError):
     code = "conflict"
 
 
+class Locked(AppError):
+    status_code = 429
+    code = "account_locked"
+
+
 class ValidationFailed(AppError):
     status_code = 422
     code = "validation_failed"

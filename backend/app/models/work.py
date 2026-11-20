@@ -10,7 +10,7 @@ from app.core.database import Base
 from app.core.timeutils import utcnow
 from app.models.base import UTCDateTime, JSONType, SoftDeleteMixin, TimestampMixin, str_enum
 from app.models.enums import (
-    AssignmentStatus, AttendanceStatus, DeliverableStatus, Priority, ReviewDecision, SubmissionStatus,
+    AssignmentStatus, AttendanceStatus, DeliverableStatus, LeaveStatus, Priority, ReviewDecision, SubmissionStatus,
 )
 from app.models.org import User
 from app.models.production import Episode, Project, Scene
@@ -97,10 +97,50 @@ class Attendance(TimestampMixin, Base):
         str_enum(AttendanceStatus, "attendance_status"), default=AttendanceStatus.PRESENT, nullable=False
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    work_note: Mapped[str | None] = mapped_column(Text)  # "what I did today / blockers", written at check-out
     corrected_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     corrected_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+
+class FeedbackPhrase(Base):
+    """Studio-wide quick feedback phrases for reviews (managed by admins)."""
+    __tablename__ = "feedback_phrases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    text: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class WeeklyTarget(TimestampMixin, Base):
+    """Approved scenes per week a lead expects from one artist."""
+    __tablename__ = "weekly_targets"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    scenes_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
+    set_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class LeaveRequest(TimestampMixin, Base):
+    """An artist's request for days off (any range, past or future). Approved days show as "leave"
+    in attendance unless they checked in anyway."""
+    __tablename__ = "leave_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    start_day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    end_day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[LeaveStatus] = mapped_column(
+        str_enum(LeaveStatus, "leave_status"), default=LeaveStatus.PENDING, nullable=False, index=True
+    )
+    decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    decision_note: Mapped[str | None] = mapped_column(Text)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    decided_by: Mapped[User | None] = relationship(foreign_keys=[decided_by_id])
 
 
 class Submission(TimestampMixin, Base):
@@ -186,6 +226,7 @@ class Review(Base):
     reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     decision: Mapped[ReviewDecision] = mapped_column(str_enum(ReviewDecision, "review_decision"), nullable=False)
     feedback: Mapped[str | None] = mapped_column(Text)
+    rating: Mapped[int | None] = mapped_column(Integer)  # 1-5, visible to leads and admins only
     approved_scene_ids: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False, index=True)
 

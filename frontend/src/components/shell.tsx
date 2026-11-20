@@ -1,23 +1,26 @@
-import { useState, type ReactNode } from "react"
-import { NavLink, Outlet, useNavigate } from "react-router-dom"
+import { useEffect, useState, type ReactNode } from "react"
+import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
-  Bell, Building2, CalendarCheck, FileText, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
-  History, Inbox, ListChecks, MessageSquareText, Send, Settings, UserCircle2, Users, X,
+  Bell, Building2, CalendarCheck, CalendarOff, FileText, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
+  CalendarDays, History, Inbox, ListChecks, Megaphone, MessageSquare, ScrollText, MessageSquareText, Send, Settings, UserCircle2, Users, X,
 } from "lucide-react"
 
 import { ChangePasswordDialog } from "@/components/change-password"
+import { ChatLiveProvider } from "@/components/chat-live"
 import { NotificationBell } from "@/components/notifications"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/misc"
 import { useAuth } from "@/lib/auth-context"
-import { useSubmissions } from "@/lib/queries"
-import { getStudioTimezone, initials, titleCase } from "@/lib/format"
+import { useChatUnread } from "@/lib/chat"
+import { useLeave, useSubmissions } from "@/lib/queries"
+import { formatCurrentStudioTime, getStudioTimezone, initials, titleCase } from "@/lib/format"
 import type { Role } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: "reviews" }
+interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: "reviews" | "leave" | "chat" }
 
 /** Only routes that are implemented appear here — no placeholder links. */
 export const NAV: Record<Role, NavItem[]> = {
@@ -26,7 +29,12 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/admin/employees", label: "Employees", icon: <Users /> },
     { to: "/admin/projects", label: "Projects", icon: <Film /> },
     { to: "/admin/teams", label: "Teams", icon: <Building2 /> },
+    { to: "/admin/leave", label: "Leave", icon: <CalendarDays />, badge: "leave" },
+    { to: "/admin/announcements", label: "Announcements", icon: <Megaphone /> },
+    { to: "/admin/holidays", label: "Holidays", icon: <CalendarOff /> },
     { to: "/admin/reports", label: "Reports", icon: <FileText /> },
+    { to: "/admin/chat", label: "Chat", icon: <MessageSquare />, badge: "chat" },
+    { to: "/admin/activity", label: "Activity", icon: <ScrollText /> },
     { to: "/admin/settings", label: "Settings", icon: <Settings /> },
   ],
   team_lead: [
@@ -38,7 +46,10 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/lead/submissions", label: "Submissions", icon: <Inbox /> },
     { to: "/lead/reviews", label: "Reviews", icon: <ListChecks />, badge: "reviews" },
     { to: "/lead/artists", label: "Artists", icon: <Users /> },
+    { to: "/lead/leave", label: "Leave", icon: <CalendarDays />, badge: "leave" },
+    { to: "/lead/announcements", label: "Announcements", icon: <Megaphone /> },
     { to: "/lead/reports", label: "EOD Reports", icon: <FileText /> },
+    { to: "/lead/chat", label: "Chat", icon: <MessageSquare />, badge: "chat" },
     { to: "/lead/notifications", label: "Notifications", icon: <Bell /> },
     { to: "/lead/settings", label: "Settings", icon: <Settings /> },
   ],
@@ -48,6 +59,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/artist/assignments", label: "My Assignments", icon: <ClipboardList /> },
     { to: "/artist/submit", label: "Submit Work", icon: <Send /> },
     { to: "/artist/reviews", label: "My Reviews", icon: <MessageSquareText /> },
+    { to: "/artist/chat", label: "Chat", icon: <MessageSquare />, badge: "chat" },
     { to: "/artist/notifications", label: "Notifications", icon: <Bell /> },
     { to: "/artist/history", label: "Work History", icon: <History /> },
   ],
@@ -55,15 +67,36 @@ export const NAV: Record<Role, NavItem[]> = {
 
 const ROLE_LABEL: Record<Role, string> = { admin: "Administrator", team_lead: "Team Lead", artist: "Artist" }
 
+function StudioClock() {
+  const [time, setTime] = useState(() => formatCurrentStudioTime())
+  useEffect(() => {
+    const timer = setInterval(() => setTime(formatCurrentStudioTime()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="mt-auto rounded-md border bg-card/60 p-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between font-mono uppercase tracking-wider text-[10px]">
+        <span>Studio time</span>
+        <span className="text-primary font-bold">{time}</span>
+      </div>
+      <div className="mt-1 text-foreground font-mono text-[11px]">{getStudioTimezone()}</div>
+    </div>
+  )
+}
+
 function Brand() {
   return (
-    <div className="flex items-center gap-2.5 px-2">
-      <div className="grid size-8 place-items-center rounded-md border border-primary/40 bg-primary/10 text-primary">
-        <Clapperboard className="size-4" />
+    <div className="flex items-center gap-3 px-2">
+      <div className="relative flex size-9 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-black/90 p-1 shadow-md shadow-primary/10">
+        <img src="/contiloe-emblem.svg" alt="Contiloe Logo" className="size-full object-contain" />
       </div>
       <div className="leading-tight">
-        <div className="text-sm font-semibold tracking-tight">StudioTrack</div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Production · AI</div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-bold tracking-tight text-foreground">Contiloe</span>
+          <span className="rounded bg-primary/20 px-1 py-0.5 font-mono text-[9px] font-semibold text-primary">AI</span>
+        </div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">StudioTrack</div>
       </div>
     </div>
   )
@@ -71,7 +104,9 @@ function Brand() {
 
 function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const pending = useSubmissions({ status: "pending_review" }, role === "team_lead")
-  const counts = { reviews: pending.data?.length ?? 0 }
+  const leave = useLeave({ status: "pending" }, role !== "artist")
+  const chat = useChatUnread()
+  const counts = { reviews: pending.data?.length ?? 0, leave: leave.data?.length ?? 0, chat: chat.data?.unread ?? 0 }
   return (
     <nav className="flex flex-col gap-0.5">
       {NAV[role].map((item) => (
@@ -90,8 +125,8 @@ function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void 
           {item.icon}
           {item.label}
           {item.badge && counts[item.badge] > 0 && (
-            <span className="ml-auto rounded-full bg-primary px-1.5 font-mono text-[10px] font-semibold text-primary-foreground" aria-label={`${counts[item.badge]} pending`}>
-              {counts[item.badge]}
+            <span className="ml-auto rounded-full bg-primary px-1.5 font-mono text-[10px] font-semibold text-primary-foreground" aria-label={`${counts[item.badge]} ${item.badge === "chat" ? "unread" : "pending"}`}>
+              {counts[item.badge] > 99 ? "99+" : counts[item.badge]}
             </span>
           )}
         </NavLink>
@@ -101,25 +136,25 @@ function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void 
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth()
+  const { user, logout, mfaSetupRequired } = useAuth()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
   if (!user) return null
+  // The API refuses admin data until two-step login is set up (403 "mfa_required"): go there instead of broken pages.
+  if (user.role === "admin" && mfaSetupRequired) return <Navigate to="/admin/two-step" replace />
 
   const sidebar = (
     <div className="flex h-full flex-col gap-6 px-3 py-4">
       <Brand />
       <div className="px-2.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">{ROLE_LABEL[user.role]} workspace</div>
       <SidebarNav role={user.role} onNavigate={() => setMobileOpen(false)} />
-      <div className="mt-auto rounded-md border bg-card/60 p-3 text-[11px] text-muted-foreground">
-        <div className="font-mono uppercase tracking-wider">Studio time</div>
-        <div className="mt-0.5 text-foreground">{getStudioTimezone()}</div>
-      </div>
+      <StudioClock />
     </div>
   )
 
   return (
+    <ChatLiveProvider>
     <div className="min-h-screen">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r bg-sidebar lg:block">{sidebar}</aside>
 
@@ -136,11 +171,12 @@ export function AppShell() {
       )}
 
       <div className="lg:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur lg:px-8">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b sm:gap-3 bg-background/85 px-4 backdrop-blur lg:px-8">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu />
           </Button>
           <div className="flex-1" />
+          <ThemeToggle />
           <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -158,7 +194,8 @@ export function AppShell() {
                 <div className="flex items-center gap-2"><UserCircle2 className="size-4" />{user.email}</div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setPwOpen(true)}><KeyRound />Change password</DropdownMenuItem>
+              {/* Artists can't change their own password; an admin resets it for them. */}
+              {user.role !== "artist" && <DropdownMenuItem onSelect={() => setPwOpen(true)}><KeyRound />Change password</DropdownMenuItem>}
               <DropdownMenuItem destructive onSelect={() => { logout(); navigate("/login") }}><LogOut />Sign out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -169,5 +206,6 @@ export function AppShell() {
       </div>
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </div>
+    </ChatLiveProvider>
   )
 }

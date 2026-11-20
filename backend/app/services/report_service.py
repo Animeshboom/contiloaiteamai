@@ -13,7 +13,9 @@ from app.core import approval
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.core.timeutils import studio_today, utcnow
-from app.models import AuthorizedRecipient, DailyReport, EmailLog, EmailStatus, ReportStatus, User
+from app.models import (
+    AuthorizedRecipient, DailyReport, EmailLog, EmailStatus, ReportStatus, Role, RoleName, Team, User,
+)
 from app.schemas.reports import ReportGenerate, ReportListItem, ReportOut, ReportUpdate
 from app.services import audit, email_service, notification_service, report_ai, report_metrics, scope
 
@@ -60,9 +62,14 @@ def render_body(m: dict, narrative: dict, ai_status: str) -> str:
     lines += ["", "ARTIST PERFORMANCE",
               f"  {'Artist':<32}{'Attend.':<16}{'Active':>7}{'Subm.':>7}{'Appr.':>7}{'Rej.':>6}{'Pend.':>7}{'Late':>6}"]
     for a in m["artists"]:
-        att = a["attendance"].replace("_", " ") + (f" {a['check_in']}" if a["check_in"] else "")
+        show_time = get_settings().show_checkin_times and a.get("check_in")
+        att = a["attendance"].replace("_", " ") + (f" {a['check_in']}" if show_time else "")
         lines.append(f"  {a['name'][:31]:<32}{att[:15]:<16}{a['active_assignments']:>7}{a['scenes_submitted']:>7}"
                      f"{a['scenes_approved']:>7}{a['scenes_rejected']:>6}{a['pending_reviews']:>7}{a['delayed_assignments']:>6}")
+
+    notes = [a for a in m["artists"] if a.get("work_note")]
+    if notes:
+        lines += ["", "NOTES FROM THE TEAM (what I did / blockers)", *[f"  • {a['name']}: {a['work_note']}" for a in notes]]
 
     for title, key in (("DELAYED ASSIGNMENTS", "delayed_assignments"), ("INCOMPLETE (DUE TODAY)", "incomplete_assignments")):
         if m[key]:
@@ -115,11 +122,14 @@ def _names(db: Session, ids: set[int | None]) -> dict[int, str]:
 
 
 def to_list_item(db: Session, r: DailyReport) -> ReportListItem:
-    n = _names(db, {r.created_by_id, r.sent_by_id})
+    n = _names(db, {r.created_by_id, r.sent_by_id, r.submitted_by_id, r.admin_commented_by_id})
     return ReportListItem(id=r.id, report_date=r.report_date, status=r.status, subject=r.subject, recipients=r.recipients,
                           ai_status=r.ai_status, created_by_name=n.get(r.created_by_id, "—"), created_at=r.created_at,
                           approved_at=r.approved_at, sent_at=r.sent_at, sent_by_name=n.get(r.sent_by_id),
-                          delivery_status=r.delivery_status, filters=r.filters)
+                          delivery_status=r.delivery_status, filters=r.filters, auto_generated=r.auto_generated,
+                          issues=r.issues, submitted_at=r.submitted_at, submitted_by_name=n.get(r.submitted_by_id),
+                          admin_comment=r.admin_comment, admin_commented_at=r.admin_commented_at,
+                          admin_commented_by_name=n.get(r.admin_commented_by_id))
 
 
 def to_out(db: Session, r: DailyReport) -> ReportOut:
@@ -139,7 +149,7 @@ def default_recipients(db: Session) -> list[str]:
                            .order_by(AuthorizedRecipient.email)))
 
 
-def generate(db: Session, actor: User, data: ReportGenerate, ip: str | None) -> DailyReport:
+def generate(db: Session, actor: User, data: ReportGenerate, ip: str | None, *, auto: bool = False) -> DailyReport:
     d = data.report_date or studio_today()
     if d > studio_today():
         raise ValidationFailed("Reports cannot be generated for future dates")
@@ -155,16 +165,73 @@ def generate(db: Session, actor: User, data: ReportGenerate, ip: str | None) -> 
         metrics=metrics, narrative=narrative, ai_summary=narrative["summary"],
         ai_generated=result.status == "generated", ai_status=result.status, ai_note=result.note,
         subject=_subject(metrics), body=render_body(metrics, narrative, result.status),
-        status=ReportStatus.DRAFT, recipients=default_recipients(db), created_by_id=actor.id,
+        status=ReportStatus.DRAFT, recipients=default_recipients(db), created_by_id=actor.id, auto_generated=auto,
     )
     db.add(r)
     db.flush()
     audit.record(db, actor_id=actor.id, action="report.generate", entity_type="daily_report", entity_id=r.id,
                  after={"report_date": d, "filters": r.filters, "ai_status": result.status}, ip=ip)
-    notification_service.daily_report_generated(db, r.id, actor.id, d.isoformat())
+    if not auto:  # the 7 PM job sends its own "ready to send" notification
+        notification_service.daily_report_generated(db, r.id, actor.id, d.isoformat())
     db.commit()
     db.refresh(r)
     return r
+
+
+# ---------------- in-app: lead -> admin ----------------
+
+def submit_to_admin(db: Session, actor: User, report_id: int, issues: str | None, ip: str | None) -> DailyReport:
+    """The lead adds issues/remarks and sends the report to the admins (in the app; no email needed)."""
+    r = get(db, actor, report_id)
+    if r.submitted_at is not None:
+        raise Conflict("This report was already sent to the admin")
+    r.issues = (issues or "").strip() or None
+    r.submitted_at, r.submitted_by_id = utcnow(), actor.id
+    audit.record(db, actor_id=actor.id, action="report.submit", entity_type="daily_report", entity_id=r.id,
+                 after={"issues": r.issues}, ip=ip)
+    admins = db.scalars(select(User.id).join(Role).where(
+        Role.name == RoleName.ADMIN, User.is_active.is_(True), User.deleted_at.is_(None), User.id != actor.id))
+    for admin_id in admins:
+        notification_service.notify(
+            db, user_id=admin_id, event_type="report_submitted",
+            title=f"Day report from {actor.full_name}: {r.report_date:%d %b}",
+            message=(r.issues[:200] if r.issues else "No issues reported."), link=f"/admin/reports/{r.id}",
+            entity_type="daily_report", entity_id=r.id, dedupe_key=f"report:{r.id}:submitted:{admin_id}")
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+def comment(db: Session, actor: User, report_id: int, text: str, ip: str | None) -> DailyReport:
+    """An admin replies on a lead's report; the lead is notified."""
+    r = get(db, actor, report_id)
+    r.admin_comment = text.strip()
+    r.admin_commented_at, r.admin_commented_by_id = utcnow(), actor.id
+    audit.record(db, actor_id=actor.id, action="report.comment", entity_type="daily_report", entity_id=r.id,
+                 after={"comment": r.admin_comment}, ip=ip)
+    notification_service.notify(
+        db, user_id=r.created_by_id, event_type="report_comment", title=f"Admin replied on {r.report_date:%d %b}",
+        message=r.admin_comment[:200], link=f"/lead/reports/{r.id}", entity_type="daily_report", entity_id=r.id,
+        dedupe_key=f"report:{r.id}:comment:{int(r.admin_commented_at.timestamp())}")
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+def team_status(db: Session, report_date: date) -> list[dict]:
+    """Admin view: for each active team lead, today's report and whether it was sent."""
+    leads = db.scalars(select(User).join(Role).where(
+        Role.name == RoleName.TEAM_LEAD, User.is_active.is_(True), User.deleted_at.is_(None)).order_by(User.full_name))
+    out = []
+    for lead in leads:
+        teams = sorted(t.name for t in db.scalars(select(Team).where(Team.lead_id == lead.id, Team.deleted_at.is_(None))))
+        r = db.scalar(select(DailyReport).where(DailyReport.report_date == report_date,
+                                                DailyReport.created_by_id == lead.id)
+                      .order_by(DailyReport.submitted_at.is_(None), DailyReport.id.desc()).limit(1))
+        out.append({"lead_id": lead.id, "lead": lead.full_name, "teams": teams,
+                    "report_id": r.id if r else None, "submitted_at": r.submitted_at if r else None,
+                    "issues": r.issues if r else None})
+    return out
 
 
 # ---------------- edit / approve / revoke ----------------
@@ -226,8 +293,14 @@ def revoke(db: Session, actor: User, report_id: int, ip: str | None) -> DailyRep
 
 # ---------------- send ----------------
 
+def _require_email() -> None:
+    if not get_settings().email_enabled:
+        raise Conflict("Email is turned off (EMAIL_ENABLED=false). The report is saved and can be copied.")
+
+
 async def send(db: Session, actor: User, report_id: int, ip: str | None) -> DailyReport:
     """Explicit, authorized send of an approved report through the Gmail MCP server."""
+    _require_email()
     r = get(db, actor, report_id)
     if r.status == ReportStatus.SENT:
         raise Conflict("This report has already been sent")
@@ -266,6 +339,7 @@ async def send(db: Session, actor: User, report_id: int, ip: str | None) -> Dail
 
 async def create_gmail_draft(db: Session, actor: User, report_id: int, ip: str | None) -> DailyReport:
     """Optional: put the current text in the sender's Gmail drafts for a final look. Never sends."""
+    _require_email()
     r = get(db, actor, report_id)
     if r.status == ReportStatus.SENT:
         raise Conflict("This report has already been sent")

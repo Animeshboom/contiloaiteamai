@@ -14,6 +14,7 @@ class AttendanceOut(BaseModel):
     check_out_at: datetime | None
     status: AttendanceStatus
     notes: str | None
+    work_note: str | None = None
     corrected_by_id: int | None
     corrected_at: datetime | None
     worked_minutes: int | None = None
@@ -31,9 +32,22 @@ class RosterRow(BaseModel):
     full_name: str
     job_title: str | None
     team_name: str | None
-    # "not_checked_in" is a derived display state for today, never stored.
+    # "not_checked_in", "leave" (approved request) and "day_off" are derived display states, never stored.
     status: str
     record: AttendanceOut | None
+    month: "MonthStats | None" = None
+
+
+class MonthStats(BaseModel):
+    month: str  # YYYY-MM
+    present: float  # half days count 0.5
+    counted_days: int  # work days decided so far (present, half day, leave or absent)
+    pct: int | None
+    low: bool  # below LOW_ATTENDANCE_PCT
+
+
+class CheckOut(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)  # what I did today / blockers
 
 
 class AttendanceCorrection(BaseModel):
@@ -59,3 +73,6 @@ class DailyCount(BaseModel):
     half_day: int
     leave: int
     absent: int
+
+
+RosterRow.model_rebuild()

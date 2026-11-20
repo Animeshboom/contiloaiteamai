@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox, Field, Input, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { isoToStudioLocal, studioLocalToIso, titleCase } from "@/lib/format"
+import { isoToStudioLocal, nextEodLocal, studioLocalToIso, titleCase } from "@/lib/format"
 import { useAction, useProject, useProjects, useUsers } from "@/lib/queries"
 import type { Assignment, Priority } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -18,7 +18,7 @@ export function AssignmentFormDialog({ open, onOpenChange, assignment, onSaved }
 }) {
   const editing = !!assignment
   const { config } = useAuth()
-  const projects = useProjects({ status: "active" })
+  const projects = useProjects()  // planning, active and on-hold projects can all receive work
   const artists = useUsers({ role: "artist" })
 
   const [projectId, setProjectId] = useState<number | undefined>(assignment?.project_id)
@@ -29,11 +29,11 @@ export function AssignmentFormDialog({ open, onOpenChange, assignment, onSaved }
   const [description, setDescription] = useState(assignment?.description ?? "")
   const [deliverables, setDeliverables] = useState(assignment?.expected_deliverables ?? "")
   const [priority, setPriority] = useState<Priority>(assignment?.priority ?? "medium")
-  const defaultDeadline = config ? `${config.studio_today}T${String(config.eod_deadline_hour).padStart(2, "0")}:00` : ""
+  const defaultDeadline = config ? nextEodLocal(config.studio_today, config.eod_deadline_hour) : ""
   const [deadline, setDeadline] = useState(assignment ? isoToStudioLocal(assignment.deadline) : defaultDeadline)
 
   const project = useProject(projectId)
-  const manageable = (projects.data ?? []).filter((p) => p.can_manage)
+  const manageable = (projects.data ?? []).filter((p) => p.can_manage && p.status !== "completed" && p.status !== "archived")
   const episode = project.data?.episodes.find((e) => e.id === episodeId)
 
   useEffect(() => {
@@ -83,11 +83,16 @@ export function AssignmentFormDialog({ open, onOpenChange, assignment, onSaved }
           </DialogHeader>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Project" htmlFor="a-project">
+            <Field label="Project" htmlFor="a-project"
+              hint={!editing && projects.data && !manageable.length ? "No open projects yet. Create one on the Projects page first." : undefined}>
               <NativeSelect id="a-project" required disabled={editing} value={projectId ?? ""}
                 onChange={(e) => { setProjectId(Number(e.target.value) || undefined); setEpisodeId(undefined); setSceneIds([]) }}>
                 <option value="">Select project…</option>
-                {(editing ? projects.data ?? [] : manageable).map((p) => <option key={p.id} value={p.id}>{p.code} — {p.title}</option>)}
+                {(editing ? projects.data ?? [] : manageable).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.title}{p.status !== "active" ? ` (${p.status.replace("_", " ")})` : ""}
+                  </option>
+                ))}
               </NativeSelect>
             </Field>
             <Field label="Episode" htmlFor="a-episode" hint={!editing && projectId && !project.data?.episodes.length ? "This project has no episodes yet" : undefined}>
@@ -130,7 +135,7 @@ export function AssignmentFormDialog({ open, onOpenChange, assignment, onSaved }
 
           <Field label={`Artists (${artistIds.length} selected)`}>
             {artists.data?.length === 0 ? <p className="text-xs text-muted-foreground">No artists in your team.</p> : (
-              <div className="grid max-h-40 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
+              <div className="grid max-h-48 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
                 {artists.data?.map((u) => (
                   <label key={u.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent cursor-pointer">
                     <Checkbox checked={artistIds.includes(u.id)} onCheckedChange={() => setArtistIds(toggle(artistIds, u.id))} />
@@ -143,7 +148,7 @@ export function AssignmentFormDialog({ open, onOpenChange, assignment, onSaved }
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Deadline (studio time)" htmlFor="a-deadline" className="sm:col-span-2" hint={!editing ? `Defaults to today's EOD (${config?.eod_deadline_hour}:00)` : undefined}>
+            <Field label="Deadline (studio time)" htmlFor="a-deadline" className="sm:col-span-2" hint={!editing ? `Defaults to the next EOD (${config?.eod_deadline_hour}:00)` : undefined}>
               <Input id="a-deadline" type="datetime-local" required value={deadline} onChange={(e) => setDeadline(e.target.value)} />
             </Field>
             <Field label="Priority" htmlFor="a-priority">

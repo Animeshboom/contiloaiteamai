@@ -20,9 +20,10 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
     if (mismatch) return
     setBusy(true)
     try {
-      const res = await api.post<{ access_token: string }>("/auth/change-password", { current_password: current, new_password: next })
-      setToken(res.access_token)
-      toast.success("Password changed. Other sessions have been signed out.")
+      const res = await api.post<{ access_token: string | null }>("/auth/change-password", { current_password: current, new_password: next })
+      // Local sign-in returns a fresh token (other sessions are revoked); with Supabase the session continues.
+      if (res.access_token) setToken(res.access_token)
+      toast.success(res.access_token ? "Password changed. Other sessions have been signed out." : "Password changed.")
       setCurrent(""); setNext(""); setConfirm("")
       onOpenChange(false)
     } catch (err) {

@@ -1,12 +1,13 @@
 import { useNavigate } from "react-router-dom"
-import { AlarmClock, Bell, CheckCheck, CheckCircle2, ClipboardList, FileText, Inbox, RotateCcw } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
+import { AlarmClock, Bell, CheckCheck, CheckCircle2, ClipboardList, FileText, Inbox, Megaphone, RotateCcw, ShieldAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/misc"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { formatDateTime } from "@/lib/format"
-import { useAction, useNotifications, useUnreadCount } from "@/lib/queries"
+import { keys, useAction, useNotifications, useUnreadCount } from "@/lib/queries"
 import type { AppNotification } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +18,8 @@ const ICONS: Record<string, React.ReactNode> = {
   revision_requested: <RotateCcw className="text-destructive" />,
   deadline_approaching: <AlarmClock className="text-warning" />,
   daily_report_generated: <FileText className="text-primary" />,
+  security_alert: <ShieldAlert className="text-destructive" />,
+  announcement: <Megaphone className="text-primary" />,  // links to the person's home, where the feed is on top  // links to /admin/activity
 }
 
 export function notificationsPath(role?: string) {
@@ -26,9 +29,14 @@ export function notificationsPath(role?: string) {
 /** Marks a notification read and follows its link. */
 export function useOpenNotification() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const read = useAction((id: number) => api.post(`/notifications/${id}/read`), { invalidate: [["notifications"]] })
   return (n: AppNotification) => {
     if (!n.read_at) read.mutate(n.id)
+    if (n.event_type === "announcement") {
+      void qc.invalidateQueries({ queryKey: keys.myAnnouncements })  // show it now, not at the next poll
+      try { window.scrollTo({ top: 0, behavior: "smooth" }) } catch { /* not supported */ }
+    }
     if (n.link) navigate(n.link)
   }
 }
@@ -70,10 +78,10 @@ export function NotificationBell() {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96 p-0">
+      <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1rem))] p-0">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-semibold">Notifications</span>
-          {unread > 0 && <Button variant="ghost" size="sm" onClick={() => readAll.mutate(undefined)}><CheckCheck />Mark all read</Button>}
+          {unread > 0 && <Button variant="ghost" size="sm" disabled={readAll.isPending} onClick={() => readAll.mutate(undefined)}><CheckCheck />Mark all read</Button>}
         </div>
         <div className="max-h-96 overflow-y-auto p-1">
           {!list.data?.length ? (

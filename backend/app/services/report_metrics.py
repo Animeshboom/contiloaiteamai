@@ -30,6 +30,7 @@ def _hhmm(dt: datetime | None) -> str | None:
     return to_studio(dt).strftime("%H:%M") if dt else None
 
 
+
 def _pct(part: int, whole: int) -> int | None:
     return round(100 * part / whole) if whole else None
 
@@ -51,9 +52,14 @@ def compute(db: Session, actor: User, report_date: date, *, project_id: int | No
 
     att = {r.user_id: r for r in db.scalars(select(Attendance).where(
         Attendance.work_date == report_date, Attendance.user_id.in_(member_ids or {-1})))}
-    att_counts = {"present": 0, "half_day": 0, "leave": 0, "absent": 0, "not_checked_in": 0}
+    leave = attendance_service._leave_days(db, list(member_ids), report_date, report_date)
+
+    def attendance_of(u):
+        return attendance_service.derived_status(att.get(u.id), report_date, u.team_id, report_date in leave[u.id])
+
+    att_counts = {"present": 0, "half_day": 0, "leave": 0, "absent": 0, "not_checked_in": 0, "day_off": 0}
     for u in members:
-        att_counts[attendance_service.derived_status(att.get(u.id), report_date)] += 1
+        att_counts[attendance_of(u)] += 1
 
     # ---------- assignment slots in scope ----------
     q = scope.assignment_query(db, actor)
@@ -103,10 +109,11 @@ def compute(db: Session, actor: User, report_date: date, *, project_id: int | No
         rec = att.get(u.id)
         per[u.id] = {
             "name": u.full_name, "job_title": u.job_title,
-            "attendance": attendance_service.derived_status(rec, report_date),
+            "attendance": attendance_of(u),
             "check_in": _hhmm(rec.check_in_at) if rec else None,
             "check_out": _hhmm(rec.check_out_at) if rec else None,
             "worked_minutes": attendance_service.to_out(rec).worked_minutes if rec else None,
+            "work_note": rec.work_note if rec else None,
             "active_assignments": 0, "scenes_assigned_today": 0, "scenes_submitted": 0, "scenes_approved": 0,
             "scenes_rejected": 0, "pending_reviews": 0, "delayed_assignments": 0, "late_submissions": 0,
             "reported_progress_pct": None,
@@ -163,8 +170,9 @@ def compute(db: Session, actor: User, report_date: date, *, project_id: int | No
         "team_members": len(members),
         "present": att_counts["present"] + att_counts["half_day"],
         "half_day": att_counts["half_day"], "on_leave": att_counts["leave"], "absent": att_counts["absent"],
-        "not_checked_in": att_counts["not_checked_in"],
-        "attendance_rate_pct": _pct(att_counts["present"] + att_counts["half_day"], len(members)),
+        "not_checked_in": att_counts["not_checked_in"], "day_off": att_counts["day_off"],
+        "attendance_rate_pct": _pct(att_counts["present"] + att_counts["half_day"],
+                                    len(members) - att_counts["day_off"]),
         "projects_worked_on": len(proj),
         "assignments_distributed": len(distributed), "assignments_active": len({a.id for a, _ in active}),
         "scenes_assigned": scenes_assigned, "scenes_submitted": len(scene_dels_today),
@@ -198,7 +206,7 @@ def compute(db: Session, actor: User, report_date: date, *, project_id: int | No
         "scope": {"teams": team_names, "filters": labels},
         "totals": totals,
         "attendance_by_status": {k: sorted(per[u.id]["name"] for u in members if per[u.id]["attendance"] == k)
-                                 for k in ("present", "half_day", "leave", "absent", "not_checked_in")},
+                                 for k in ("present", "half_day", "leave", "absent", "not_checked_in", "day_off")},
         "projects": sorted(proj.values(), key=lambda p: p["code"]),
         "artists": sorted(per.values(), key=lambda r: r["name"]),
         "incomplete_assignments": [slot_row(a, x) for a, x in incomplete],

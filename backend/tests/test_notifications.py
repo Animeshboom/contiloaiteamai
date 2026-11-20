@@ -258,3 +258,45 @@ def test_deadline_reminders_once_per_deadline(client, as_lead, as_artist, db, mo
     assert jobs.send_deadline_reminders() == 0
     statuses = {x.status.value for x in db.scalars(select(AssignmentAssignee))}
     assert "submitted" in statuses
+
+
+def test_unexpected_error_does_not_strand_the_batch(client, as_lead, db, monkeypatch):
+    """A timeout or malformed reply (not a GatewayError) used to abort the batch and leave rows stuck."""
+    _queue_one(client, as_lead, db, monkeypatch)
+
+    async def _noop(*a, **k):
+        return {}
+    monkeypatch.setattr(email_service, "dispatch_pending", _noop)
+    _assign(client, as_lead, db, n=1)  # a second queued email in the same batch
+    monkeypatch.undo()
+    calls = []
+
+    class _Caller:
+        async def call(self, tool, args):
+            calls.append(tool)
+            if len(calls) == 1:
+                raise TimeoutError("read timed out")
+            return email_service.DeliveryResult(status="sent", backend="mock", message_id="m1")
+
+    @asynccontextmanager
+    async def _open():
+        yield _Caller()
+    monkeypatch.setattr(email_service, "open_gateway", _open)
+
+    assert asyncio.run(email_service.dispatch_pending()) == {"sent": 1, "failed": 1, "blocked": 0}
+    first, second = _emails(db)
+    assert first.status == EmailStatus.FAILED and "TimeoutError" in first.error and first.next_attempt_at
+    assert second.status == EmailStatus.SENT
+
+
+def test_interrupted_last_attempt_becomes_failed_and_retryable(client, as_lead, db, monkeypatch):
+    row = _queue_one(client, as_lead, db, monkeypatch)
+    row.attempts = get_settings().email_max_attempts  # dispatcher died during the final attempt
+    row.next_attempt_at = utcnow() - timedelta(seconds=1)  # lease expired
+    db.commit()
+    monkeypatch.setattr(email_service, "open_gateway", _failing_gateway("retryable"))
+    asyncio.run(email_service.dispatch_pending())
+    row = _emails(db)[0]
+    assert row.status == EmailStatus.FAILED and row.next_attempt_at is None
+    email_service.retry(db, row)  # an admin can now re-queue it
+    assert row.attempts == 0

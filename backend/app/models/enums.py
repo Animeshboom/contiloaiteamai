@@ -47,6 +47,14 @@ class AssignmentStatus(str, enum.Enum):
     APPROVED = "approved"
     REVISION_REQUIRED = "revision_required"  # Rejected / Revision Required
     COMPLETED = "completed"
+    REASSIGNED = "reassigned"  # one person's slot only: the work was moved to someone else (history kept)
+
+
+class LeaveStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
 
 
 class AttendanceStatus(str, enum.Enum):

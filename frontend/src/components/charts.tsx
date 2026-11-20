@@ -7,7 +7,7 @@ import { shortDay } from "@/lib/format"
 import type { DailyCount } from "@/lib/types"
 
 /**
- * Attendance series. Stack order and hex steps were validated for the dark surface
+ * Attendance series. Mid-lightness hex steps that read on both the light and the dark card surface; validated for the dark surface
  * (dataviz validate_palette.js: lightness band, chroma, CVD adjacency, contrast — all PASS).
  * Green and amber are deliberately never adjacent (protan ΔE 3.0 when touching).
  */

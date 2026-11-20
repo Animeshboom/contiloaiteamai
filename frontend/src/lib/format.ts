@@ -10,12 +10,25 @@ export function getStudioTimezone() {
   return studioTz
 }
 
+/** Today's date (YYYY-MM-DD) in the studio timezone, from the browser clock. */
+export function studioTodayNow(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: studioTz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now)
+}
+
+/** Default deadline for a new assignment: today's EOD, or tomorrow's once today's has passed. */
+export function nextEodLocal(today: string, eodHour: number, now: Date = new Date()): string {
+  const at = (d: string) => `${d}T${String(eodHour).padStart(2, "0")}:00`
+  return new Date(studioLocalToIso(at(today))) > now ? at(today) : at(addDays(today, 1))
+}
+
 function fmt(iso: string | null | undefined, opts: Intl.DateTimeFormatOptions): string {
   if (!iso) return "—"
   return new Intl.DateTimeFormat("en-GB", { timeZone: studioTz, ...opts }).format(new Date(iso))
 }
 
 export const formatTime = (iso?: string | null) => fmt(iso, { hour: "2-digit", minute: "2-digit", hour12: false })
+export const formatCurrentStudioTime = () =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: studioTz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date())
 export const formatDateTime = (iso?: string | null) =>
   fmt(iso, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
 
@@ -26,6 +39,11 @@ export function formatDate(d?: string | null, withWeekday = false): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "UTC", day: "2-digit", month: "short", year: "numeric", ...(withWeekday ? { weekday: "short" } : {}),
   }).format(new Date(Date.UTC(y, m - 1, day)))
+}
+
+/** "Mon, 24 Nov 2026" for one day, "24 Nov 2026 – 26 Nov 2026" for a range. */
+export function formatDateRange(start: string, end: string): string {
+  return start === end ? formatDate(start, true) : `${formatDate(start)} – ${formatDate(end)}`
 }
 
 export function shortDay(d: string): string {

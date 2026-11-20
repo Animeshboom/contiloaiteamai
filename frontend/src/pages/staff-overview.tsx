@@ -1,7 +1,11 @@
+import { useState } from "react"
 import { Link } from "react-router-dom"
-import { AlarmClock, ClipboardList, Film, ListChecks, UserCheck } from "lucide-react"
+import { AlarmClock, ClipboardList, Pencil, Film, ListChecks, UserCheck } from "lucide-react"
 
 import { AttendanceTrendChart, BarList } from "@/components/charts"
+import { AnnouncementsFeed } from "@/components/announcements-feed"
+import { LeadTodayPanel } from "@/components/lead-today"
+import { ProgressBar, TargetDialog } from "@/components/weekly-target"
 import { EmptyState, ErrorState, PageHeader, StatCard, assignmentStatusLabel } from "@/components/common"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,8 +22,8 @@ export default function StaffOverviewPage() {
   const { user } = useAuth()
   const { data, isLoading, error, refetch } = useStaffOverview()
   const base = user?.role === "admin" ? "/admin" : "/lead"
+  const [targetFor, setTargetFor] = useState<{ id: number; name: string; current: number | null } | null>(null)
 
-  if (error) return <ErrorState error={error} onRetry={refetch} />
 
   return (
     <>
@@ -31,7 +35,10 @@ export default function StaffOverviewPage() {
         )}
       />
 
-      {isLoading || !data ? (
+      <div className="mb-6 empty:hidden"><AnnouncementsFeed /></div>
+      {user?.role === "team_lead" && <div className="mb-6"><LeadTodayPanel /></div>}
+
+      {error ? <ErrorState error={error} onRetry={refetch} /> : isLoading || !data ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
       ) : (
         <div className="space-y-6">
@@ -72,7 +79,7 @@ export default function StaffOverviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Artist workload</CardTitle>
+              <CardTitle>Workload</CardTitle>
               <CardDescription>Per-artist assignment state (each artist tracked separately)</CardDescription>
             </CardHeader>
             <CardContent>
@@ -83,10 +90,12 @@ export default function StaffOverviewPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Artist</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead className="text-right">Open</TableHead>
                       <TableHead className="text-right">In review</TableHead>
                       <TableHead className="text-right">Approved</TableHead>
+                      <TableHead className="w-44">This week</TableHead>
+                      <TableHead className="text-right">Rating</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -100,6 +109,21 @@ export default function StaffOverviewPage() {
                         <TableCell className="text-right font-mono tabular">{w.active}</TableCell>
                         <TableCell className="text-right font-mono tabular">{w.submitted}</TableCell>
                         <TableCell className="text-right font-mono tabular">{w.approved}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-mono text-sm tabular">
+                                {w.approved_this_week ?? 0}{w.weekly_target != null && <span className="text-muted-foreground"> / {w.weekly_target}</span>}
+                              </div>
+                              {w.weekly_target != null && <ProgressBar className="mt-1" value={w.approved_this_week ?? 0} max={w.weekly_target} />}
+                            </div>
+                            <Button variant="ghost" size="icon" className="size-7" aria-label={`Set weekly target for ${w.full_name}`}
+                              onClick={() => setTargetFor({ id: w.user_id, name: w.full_name, current: w.weekly_target ?? null })}><Pencil /></Button>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm tabular">
+                          {w.avg_rating != null ? <span className="text-primary" title="Average review rating">★ {w.avg_rating.toFixed(1)}</span> : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -109,6 +133,8 @@ export default function StaffOverviewPage() {
           </Card>
         </div>
       )}
+      {targetFor && <TargetDialog userId={targetFor.id} name={targetFor.name} current={targetFor.current} onClose={() => setTargetFor(null)} />}
     </>
   )
 }
+

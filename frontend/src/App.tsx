@@ -1,15 +1,18 @@
 import { Suspense, lazy, type ReactNode } from "react"
 import { Navigate, Route, Routes, useLocation } from "react-router-dom"
-import { Loader2 } from "lucide-react"
 
 import { EmptyState } from "@/components/common"
 import { AppShell } from "@/components/shell"
+import { ShapeLoader } from "@/components/shape-loader"
 import { Button } from "@/components/ui/button"
 import { homeFor, useAuth } from "@/lib/auth-context"
 import type { Role } from "@/lib/types"
+const ActivityPage = lazy(() => import("@/pages/activity"))
 const ArtistDashboardPage = lazy(() => import("@/pages/artist-dashboard"))
 const ArtistsPage = lazy(() => import("@/pages/artists"))
 const AssignmentsPage = lazy(() => import("@/pages/assignments"))
+const AnnouncementsPage = lazy(() => import("@/pages/announcements"))
+const HolidaysPage = lazy(() => import("@/pages/holidays"))
 const EmployeesPage = lazy(() => import("@/pages/employees"))
 const LeadAttendancePage = lazy(() => import("@/pages/lead-attendance"))
 import LoginPage from "@/pages/login"
@@ -25,14 +28,17 @@ const SubmissionsPage = lazy(() => import("@/pages/submissions"))
 const SubmitWorkPage = lazy(() => import("@/pages/submit-work"))
 const SettingsPage = lazy(() => import("@/pages/settings"))
 const StaffOverviewPage = lazy(() => import("@/pages/staff-overview"))
+const LeavePage = lazy(() => import("@/pages/leave"))
 const TeamsPage = lazy(() => import("@/pages/teams"))
+const TwoStepPage = lazy(() => import("@/pages/two-step"))
+const ChatPage = lazy(() => import("@/pages/chat"))
 
 /** UX guard only — the API enforces every permission independently. */
 function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }) {
   const { user, loading } = useAuth()
   const location = useLocation()
   if (loading) {
-    return <div className="grid min-h-screen place-items-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+    return <ShapeLoader fullScreen />
   }
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />
   if (!roles.includes(user.role)) return <Navigate to={homeFor(user.role)} replace />
@@ -56,7 +62,7 @@ function NotFound() {
 }
 
 function PageLoading() {
-  return <div className="grid min-h-[50vh] place-items-center"><Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Loading" /></div>
+  return <ShapeLoader />
 }
 
 export default function App() {
@@ -66,15 +72,22 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<Home />} />
 
+      {/* Outside the shell: an admin without two-step login can't load the shell's data yet. */}
+      <Route path="/admin/two-step" element={<RequireRole roles={["admin"]}><TwoStepPage /></RequireRole>} />
       <Route path="/admin" element={<RequireRole roles={["admin"]}><AppShell /></RequireRole>}>
         <Route index element={<StaffOverviewPage />} />
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="teams" element={<TeamsPage />} />
+        <Route path="leave" element={<LeavePage />} />
+        <Route path="announcements" element={<AnnouncementsPage />} />
+        <Route path="holidays" element={<HolidaysPage />} />
+        <Route path="activity" element={<ActivityPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/:id" element={<ReportDetailPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
 
@@ -88,9 +101,12 @@ export default function App() {
         <Route path="submissions" element={<SubmissionsPage mode="lead" />} />
         <Route path="reviews" element={<ReviewsPage />} />
         <Route path="artists" element={<ArtistsPage />} />
+        <Route path="leave" element={<LeavePage />} />
+        <Route path="announcements" element={<AnnouncementsPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/:id" element={<ReportDetailPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
@@ -102,6 +118,7 @@ export default function App() {
         <Route path="submit" element={<SubmitWorkPage />} />
         <Route path="reviews" element={<SubmissionsPage key="reviews" mode="artist-reviews" />} />
         <Route path="history" element={<SubmissionsPage key="history" mode="artist-history" />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>

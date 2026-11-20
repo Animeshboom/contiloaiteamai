@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.timeutils import ensure_utc, to_studio
 from app.models import Assignment, AssignmentAssignee, Notification, RoleName, Submission, Team, User
-from app.services import email_service
+from app.services import channels, email_service
 
 
 def notify(db: Session, *, user_id: int, event_type: str, title: str, message: str, dedupe_key: str,
@@ -35,7 +35,12 @@ def notify(db: Session, *, user_id: int, event_type: str, title: str, message: s
             db.add(n)
     except IntegrityError:
         return None
+    channels.deliver(db, n)  # WhatsApp/SMS later; no channels are registered yet
     return n
+
+
+def _home(user: User) -> str:
+    return "/artist"
 
 
 def _url(path: str) -> str:
@@ -58,7 +63,7 @@ def _scene_labels(a: Assignment) -> str:
 # ---------------- events ----------------
 
 def assignment_created(db: Session, a: Assignment, artist: User) -> None:
-    link = f"/artist/assignments?open={a.id}"
+    link = f"{_home(artist)}/assignments?open={a.id}"
     msg = f"{a.project.title} · {_scene_labels(a)} · due {_due(a)}"
     notify(db, user_id=artist.id, event_type="assignment_created", title=f"New assignment: {a.title}", message=msg,
            link=link, entity_type="assignment", entity_id=a.id, dedupe_key=f"assignment:{a.id}:assigned:{artist.id}")
@@ -108,7 +113,7 @@ def submission_approved(db: Session, sub: Submission) -> None:
     a = sub.assignment
     what = ", ".join(d.label for d in sub.deliverables)
     reviewer = sub.reviews[-1].reviewer if sub.reviews else None
-    link = f"/artist/history?open={sub.id}"
+    link = f"{_home(sub.artist)}/history?open={sub.id}"
     notify(db, user_id=sub.artist_id, event_type="submission_approved", title=f"Approved: {what}",
            message=f"{a.project.title} · {a.title}", link=link, entity_type="submission", entity_id=sub.id,
            dedupe_key=f"submission:{sub.id}:approved")
@@ -134,7 +139,7 @@ def submission_rejected(db: Session, sub: Submission) -> None:
     review = sub.reviews[-1]
     revise = [d.label for d in sub.deliverables if d.status.value == "rejected"]
     approved = [d.label for d in sub.deliverables if d.status.value == "approved"]
-    link = f"/artist/submit?assignment={a.id}"
+    link = f"{_home(sub.artist)}/submit?assignment={a.id}"
     msg = f"Revise: {', '.join(revise)}" + (f" · Approved: {', '.join(approved)}" if approved else "")
     notify(db, user_id=sub.artist_id, event_type="revision_requested", title=f"Revision requested: {a.title}",
            message=f"{msg}. “{(review.feedback or '')[:140]}”", link=link, entity_type="submission",
@@ -154,14 +159,14 @@ def submission_rejected(db: Session, sub: Submission) -> None:
 def deadline_approaching(db: Session, x: AssignmentAssignee) -> bool:
     a = x.assignment
     stamp = int(ensure_utc(a.deadline).timestamp())  # a moved deadline gets its own reminder
-    link = f"/artist/assignments?open={a.id}"
+    link = f"{_home(x.user)}/assignments?open={a.id}"
     created = notify(db, user_id=x.user_id, event_type="deadline_approaching", title=f"Due soon: {a.title}",
                      message=f"Due {_due(a)} (studio time) · {_scene_labels(a)}", link=link,
                      entity_type="assignment", entity_id=a.id, dedupe_key=f"deadline:{x.id}:{stamp}")
     if created is None:
         return False
     body = (f"Reminder: your assignment is due {_due(a)} (studio time).\n\nProject: {a.project.title}\n"
-            f"Episode: {_ep(a) or '—'}\nScenes: {_scene_labels(a)}\n\nSubmit your work: {_url('/artist/submit?assignment=' + str(a.id))}")
+            f"Episode: {_ep(a) or '—'}\nScenes: {_scene_labels(a)}\n\nSubmit your work: {_url(_home(x.user) + '/submit?assignment=' + str(a.id))}")
     subject = f"Due soon: {a.title}"
     email_service.enqueue(
         db, tool="send_artist_notification", idempotency_key=f"email:deadline:{x.id}:{stamp}",

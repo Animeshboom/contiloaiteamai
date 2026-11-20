@@ -10,7 +10,12 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.api.routes import assignments, attendance, auth, dashboard, notifications, org, production, reports, submissions
+from app.services import chat_service
+from app.api.routes import (
+    activity, announcements, artists, backup, chat, assignments, attendance, auth, dashboard, holidays, lead, notifications, org, production,
+    reports,
+    submissions,
+)
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import AppError
@@ -30,6 +35,7 @@ if settings.is_production:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    chat_service.hub.attach(asyncio.get_running_loop())  # live chat delivery from request threads
     stop = asyncio.Event()
     task = None
     if settings.background_jobs and settings.environment != "test":
@@ -46,7 +52,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="StudioTrack AI API",
+    title="Contiloe StudioTrack AI API",
     version="0.1.0",
     description="Artist attendance, task assignment, quality review and EOD production reporting.",
     # Interactive API docs only outside production.
@@ -105,6 +111,15 @@ app.include_router(dashboard.router, prefix=API)
 app.include_router(submissions.router, prefix=API)
 app.include_router(notifications.router, prefix=API)
 app.include_router(reports.router, prefix=API)
+app.include_router(artists.artists, prefix=API)
+app.include_router(artists.leave, prefix=API)
+app.include_router(holidays.router, prefix=API)
+app.include_router(announcements.router, prefix=API)
+app.include_router(announcements.me, prefix=API)
+app.include_router(activity.router, prefix=API)
+app.include_router(lead.router, prefix=API)
+app.include_router(backup.router, prefix=API)
+app.include_router(chat.router, prefix=API)
 
 
 @app.get("/api/health", tags=["meta"])

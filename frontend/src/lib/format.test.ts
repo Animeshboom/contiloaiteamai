@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import { addDays, formatDate, formatTime, isoToStudioLocal, relativeDeadline, setStudioTimezone, studioLocalToIso } from "./format"
+import { addDays, formatDate, formatTime, isoToStudioLocal, nextEodLocal, relativeDeadline, setStudioTimezone, studioLocalToIso, studioTodayNow } from "./format"
 
 afterEach(() => setStudioTimezone("UTC"))
 
@@ -48,5 +48,19 @@ describe("relativeDeadline", () => {
     expect(relativeDeadline(past)).toEqual({ text: "1h 30m overdue", overdue: true })
     expect(relativeDeadline(future).overdue).toBe(false)
     expect(relativeDeadline(future).text).toMatch(/^in 3d/)
+  })
+})
+
+describe("studio today and default deadline", () => {
+  it("computes today in the studio timezone, not the browser's", () => {
+    setStudioTimezone("Asia/Kolkata")
+    expect(studioTodayNow(new Date("2026-11-18T18:29:00Z"))).toBe("2026-11-18") // 23:59 IST
+    expect(studioTodayNow(new Date("2026-11-18T18:31:00Z"))).toBe("2026-11-19") // 00:01 IST
+  })
+
+  it("defaults to today's EOD before it, and tomorrow's EOD after it has passed", () => {
+    setStudioTimezone("Asia/Kolkata")
+    expect(nextEodLocal("2026-11-19", 19, new Date("2026-11-19T10:00:00Z"))).toBe("2026-11-19T19:00") // 15:30 IST
+    expect(nextEodLocal("2026-11-19", 19, new Date("2026-11-19T16:30:00Z"))).toBe("2026-11-20T19:00") // 22:00 IST
   })
 })

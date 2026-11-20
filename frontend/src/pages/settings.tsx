@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from "react"
-import { KeyRound, Mail, Plus } from "lucide-react"
+import { Link } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
+import { KeyRound, Mail, Plus, ShieldCheck } from "lucide-react"
 
+import { BackupCard } from "@/components/backup-download"
 import { ChangePasswordDialog } from "@/components/change-password"
 import { EmailLogCard } from "@/components/email-log"
 import { EmptyState, LoadingRows, PageHeader } from "@/components/common"
@@ -12,7 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { titleCase } from "@/lib/format"
+import { supabaseHasAal2 } from "@/lib/mfa"
 import { useAction, useRecipients } from "@/lib/queries"
+import { usesSupabase } from "@/lib/supabase"
 import type { Recipient } from "@/lib/types"
 
 export default function SettingsPage() {
@@ -27,8 +32,12 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader><CardTitle>Account</CardTitle><CardDescription>{user?.email}</CardDescription></CardHeader>
-            <CardContent><Button variant="outline" onClick={() => setPwOpen(true)}><KeyRound />Change password</Button></CardContent>
+            <CardContent className="space-y-4">
+              <Button variant="outline" onClick={() => setPwOpen(true)}><KeyRound />Change password</Button>
+              {isAdmin && <TwoStepStatus mfaEnabled={Boolean(user?.mfa_enabled)} />}
+            </CardContent>
           </Card>
+          {(isAdmin || user?.role === "team_lead") && <BackupCard />}
           <Card>
             <CardHeader><CardTitle>Studio</CardTitle><CardDescription>Set via environment configuration</CardDescription></CardHeader>
             <CardContent className="grid gap-3 text-sm">
@@ -47,6 +56,20 @@ export default function SettingsPage() {
       </div>
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </>
+  )
+}
+
+function TwoStepStatus({ mfaEnabled }: { mfaEnabled: boolean }) {
+  // With Supabase Auth the factor lives in Supabase: "on" means this session was verified with a code (aal2).
+  const supa = useQuery({ queryKey: ["mfa-aal"], queryFn: supabaseHasAal2, enabled: usesSupabase, staleTime: 60_000 })
+  const on = usesSupabase ? supa.data === true : mfaEnabled
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-sm">
+      <span className="flex items-center gap-2"><ShieldCheck className="size-4 text-muted-foreground" />
+        Two-step login: {on ? <Badge tone="green" dot>On</Badge> : <Badge tone="yellow">Off</Badge>}
+      </span>
+      {!on && <Button asChild size="sm"><Link to="/admin/two-step">Set up two-step login</Link></Button>}
+    </div>
   )
 }
 

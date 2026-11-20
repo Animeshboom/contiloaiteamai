@@ -24,7 +24,8 @@ MAX_ATTACHMENTS = 10
 
 # ---------------- serialization ----------------
 
-def to_out(db: Session, s: Submission) -> SubmissionOut:
+def to_out(db: Session, s: Submission, viewer: User | None = None) -> SubmissionOut:
+    show_rating = viewer is not None and (scope.is_admin(viewer) or scope.is_lead(viewer))
     a = s.assignment
     names = dict(db.execute(select(User.id, User.full_name).where(
         User.id.in_({d.approved_by_id for d in s.deliverables if d.approved_by_id} | {r.reviewer_id for r in s.reviews} or {-1})
@@ -50,6 +51,7 @@ def to_out(db: Session, s: Submission) -> SubmissionOut:
         ],
         reviews=[
             ReviewOut(id=r.id, reviewer_id=r.reviewer_id, reviewer_name=names.get(r.reviewer_id, "—"),
+                      rating=r.rating if show_rating else None,
                       decision=r.decision, feedback=r.feedback, approved_scene_ids=list(r.approved_scene_ids or []),
                       created_at=r.created_at)
             for r in s.reviews
@@ -61,7 +63,7 @@ def to_out(db: Session, s: Submission) -> SubmissionOut:
 
 def _query(db: Session, user: User):
     q = select(Submission).join(Assignment, Assignment.id == Submission.assignment_id).where(Assignment.deleted_at.is_(None))
-    if user.role_name == RoleName.ARTIST:
+    if scope.is_worker(user):
         return q.where(Submission.artist_id == user.id)
     ids = scope.visible_user_ids(db, user)
     if ids is not None:
@@ -236,7 +238,7 @@ def review(db: Session, reviewer: User, submission_id: int, data: ReviewCreate, 
     sub.status = SubmissionStatus.APPROVED if all_ok else SubmissionStatus.REJECTED
     decision = ReviewDecision.APPROVED if all_ok else ReviewDecision.REJECTED
     db.add(Review(submission_id=sub.id, reviewer_id=reviewer.id, decision=decision, feedback=feedback,
-                  approved_scene_ids=sorted(approve_ids), created_at=now))
+                  rating=data.rating, approved_scene_ids=sorted(approve_ids), created_at=now))
     assignment_service.sync_status(db, sub.assignee)
     audit.record(db, actor_id=reviewer.id, action=f"submission.{decision.value}", entity_type="submission",
                  entity_id=sub.id, after={"approved_scene_ids": sorted(approve_ids), "feedback": feedback}, ip=ip)

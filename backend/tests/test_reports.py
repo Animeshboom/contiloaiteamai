@@ -254,7 +254,8 @@ def test_tampered_approval_is_refused_by_mcp_server(client, as_lead, day, db):
     assert client.post(f"/api/v1/reports/{r['id']}/send", headers=as_lead).json()["status"] == "sent"
 
 
-def test_gmail_draft_and_permissions(client, as_lead, as_artist, day, db):
+def test_gmail_draft_and_permissions(client, as_lead, day, db):
+    as_artist = login(client, ARTIST)  # after `day`, which signed Arjun in (artists: one device at a time)
     r = _generate(client, as_lead)
     d = client.post(f"/api/v1/reports/{r['id']}/gmail-draft", headers=as_lead).json()
     assert d["gmail_draft_id"].startswith("mock-draft-") and d["status"] == "draft"

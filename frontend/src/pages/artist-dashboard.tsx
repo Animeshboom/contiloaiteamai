@@ -2,6 +2,9 @@ import { Link } from "react-router-dom"
 import { AlarmClock, ClipboardList, Hourglass } from "lucide-react"
 
 import { CheckInCard } from "@/components/check-in-card"
+import { WeeklyTargetBar } from "@/components/weekly-target"
+import { AnnouncementsFeed } from "@/components/announcements-feed"
+import { MyMonthLine } from "@/components/month-stat"
 import { AssignmentCard } from "@/components/assignment-card"
 import { EmptyState, ErrorState, LoadingRows, PageHeader, StatCard } from "@/components/common"
 import { Button } from "@/components/ui/button"
@@ -21,7 +24,10 @@ export default function ArtistDashboardPage() {
     <>
       <PageHeader title={`Hello, ${user?.full_name.split(" ")[0]}`} description="Your day at a glance." />
       <div className="space-y-6">
+        <AnnouncementsFeed />
         <CheckInCard />
+        <MyMonthLine />
+        <WeeklyTargetBar />
         {overview.data && (
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label="Open assignments" icon={<ClipboardList />} value={overview.data.open_assignments} tone="amber" />

@@ -11,9 +11,24 @@ export interface User {
   role: Role
   job_title: string | null
   team: TeamRef | null
+  /** Login ID for people without an email (EMP001) */
+  employee_code: string | null
+  phone: string | null
   is_active: boolean
   last_login_at: string | null
   created_at: string
+  /** Set while the account is locked after too many wrong passwords (in the past = no longer locked). */
+  locked_until?: string | null
+  /** Two-step login (authenticator app) is on — admins only. */
+  mfa_enabled?: boolean
+}
+
+/** POST /auth/login, /auth/login/mfa, /auth/mfa/enable */
+export interface TokenResponse {
+  access_token: string | null
+  mfa_required?: boolean
+  mfa_token?: string | null
+  user: User
 }
 
 export interface UserBrief { id: number; full_name: string; email: string; job_title: string | null }
@@ -60,6 +75,8 @@ export interface AttendanceRecord {
   id: number; user_id: number; work_date: string
   check_in_at: string | null; check_out_at: string | null
   status: AttendanceStatus; notes: string | null
+  /** the person's own check-out note: what they did, any blockers */
+  work_note?: string | null
   corrected_by_id: number | null; corrected_at: string | null; worked_minutes: number | null
 }
 
@@ -67,13 +84,18 @@ export interface TodayStatus { work_date: string; record: AttendanceRecord | nul
 
 export interface RosterRow {
   user_id: number; full_name: string; job_title: string | null; team_name: string | null
-  status: AttendanceStatus | "not_checked_in"; record: AttendanceRecord | null
+  status: AttendanceStatus | "not_checked_in" | "day_off"; record: AttendanceRecord | null
+  month?: MonthStats
 }
+
+/** This month so far: present days (half days count 0.5) out of working days already decided. */
+export interface MonthStats { month: string; present: number; counted_days: number; pct: number | null; low: boolean }
 
 export interface DailyCount { date: string; present: number; half_day: number; leave: number; absent: number }
 
 export type Priority = "low" | "medium" | "high" | "urgent"
-export type AssignmentStatus = "assigned" | "in_progress" | "submitted" | "approved" | "revision_required" | "completed"
+/** "reassigned" only appears per assignee: the slot was handed to someone else after they had submitted. */
+export type AssignmentStatus = "assigned" | "in_progress" | "submitted" | "approved" | "revision_required" | "completed" | "reassigned"
 
 export interface SceneRef { id: number; scene_number: number; label: string; title: string | null; episode_id: number; episode_number: number }
 
@@ -98,6 +120,8 @@ export interface Attachment { id: number; original_filename: string; content_typ
 export interface Review {
   id: number; reviewer_id: number; reviewer_name: string; decision: "approved" | "rejected"
   feedback: string | null; approved_scene_ids: number[]; created_at: string
+  /** 1-5; only returned to leads/admins */
+  rating?: number | null
 }
 
 export interface Submission {
@@ -125,7 +149,7 @@ export interface Assignment {
 export interface StaffOverview {
   date: string
   headcount: number
-  attendance_today: Record<"present" | "half_day" | "leave" | "absent" | "not_checked_in", number>
+  attendance_today: Record<"present" | "half_day" | "leave" | "absent" | "not_checked_in" | "day_off", number>
   attendance_trend: DailyCount[]
   assignments_by_status: Record<AssignmentStatus, number>
   active_assignments: number
@@ -133,7 +157,10 @@ export interface StaffOverview {
   overdue: number
   pending_reviews: number
   active_projects: number
-  workload: { user_id: number; full_name: string; active: number; submitted: number; approved: number }[]
+  workload: {
+    user_id: number; full_name: string; active: number; submitted: number; approved: number
+    approved_this_week?: number; weekly_target?: number | null; avg_rating?: number | null
+  }[]
 }
 
 export interface ArtistOverview {
@@ -153,6 +180,10 @@ export interface AppConfig {
   gmail_backend: string
   ai_enabled: boolean
   max_upload_mb: number
+  email_enabled: boolean
+  auth_provider: "local" | "supabase"
+  /** Show check-in / check-out clock times (still recorded either way). Off by default. */
+  show_checkin_times: boolean
 }
 
 export interface AppNotification {
@@ -175,7 +206,7 @@ export type AiStatus = "generated" | "template" | "rejected_unverified_numbers" 
 export interface SlotRow { assignment_id: number; title: string; project: string; artist: string; deadline: string; status: AssignmentStatus; reported_progress_pct: number }
 
 export interface ArtistMetrics {
-  name: string; job_title: string | null; attendance: AttendanceStatus | "not_checked_in"
+  name: string; job_title: string | null; attendance: AttendanceStatus | "not_checked_in" | "day_off"
   check_in: string | null; check_out: string | null; worked_minutes: number | null
   active_assignments: number; scenes_assigned_today: number; scenes_submitted: number; scenes_approved: number
   scenes_rejected: number; pending_reviews: number; delayed_assignments: number; late_submissions: number
@@ -186,7 +217,7 @@ export interface ReportMetrics {
   report_date: string; generated_at: string; as_of: string
   scope: { teams: string[]; filters: Record<string, string> }
   totals: {
-    team_members: number; present: number; half_day: number; on_leave: number; absent: number; not_checked_in: number
+    team_members: number; present: number; half_day: number; on_leave: number; absent: number; not_checked_in: number; day_off?: number
     attendance_rate_pct: number | null; projects_worked_on: number; assignments_distributed: number; assignments_active: number
     scenes_assigned: number; scenes_submitted: number; deliverables_submitted: number; submissions: number
     scenes_approved: number; scenes_rejected: number; approval_rate_pct: number | null; pending_reviews: number
@@ -204,6 +235,15 @@ export interface ReportListItem {
   id: number; report_date: string; status: ReportStatus; subject: string; recipients: string[]
   ai_status: AiStatus | null; created_by_name: string; created_at: string; approved_at: string | null
   sent_at: string | null; sent_by_name: string | null; delivery_status: string | null; filters: Record<string, number>
+  /** drafted by the 7 PM job for the lead */
+  auto_generated?: boolean
+  issues?: string | null
+  submitted_at?: string | null; submitted_by_name?: string | null
+  admin_comment?: string | null; admin_commented_at?: string | null; admin_commented_by_name?: string | null
+}
+
+export interface TeamReportStatus {
+  lead_id: number; lead: string; teams: string[]; report_id: number | null; submitted_at: string | null; issues: string | null
 }
 
 export interface Report extends ReportListItem {
@@ -211,4 +251,60 @@ export interface Report extends ReportListItem {
   narrative: { summary: string; highlights: string[]; concerns: string[] }
   ai_note: string | null; body: string; approved_by_name: string | null
   gmail_message_id: string | null; gmail_draft_id: string | null; email_error: string | null
+}
+
+/* ---------- artist accounts, leave, holidays, announcements ---------- */
+
+/** Returned once, when an artist account is created or its password reset. `login` is the email or Employee ID. */
+export interface Credentials { user: User; login: string; password: string }
+
+export interface ImportResult { created: Credentials[]; errors: { row: number; message: string }[] }
+
+export interface Holiday { id: number; date: string; name: string; applies_to_all: boolean; teams: TeamRef[] }
+
+export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled"
+
+export interface Leave {
+  id: number; user_id: number; person: string; team_id: number | null; team_name: string | null
+  start: string; end: string; days: number; reason: string; status: LeaveStatus
+  decided_by: string | null; decided_at: string | null; decision_note: string | null; created_at: string
+}
+
+export interface Announcement {
+  id: number; title: string; body: string; author: string | null; author_id: number | null
+  applies_to_all: boolean; teams: TeamRef[]; show_until: string | null; created_at: string; active: boolean
+}
+
+export interface ActivityEntry {
+  id: number; at: string; actor_id: number | null; actor: string; action: string; summary: string
+  subject: string | null; details: Record<string, unknown> | null; ip: string | null
+}
+
+export interface LeadTaskItem { assignment_id: number; title: string; person: string; person_id: number; deadline: string; status: AssignmentStatus }
+
+export interface LeadToday {
+  date: string; is_work_day: boolean
+  counts: { reviews: number; leave_requests: number; overdue: number; due_today: number; absent: number }
+  reviews: { submission_id: number; person: string; assignment: string; submitted_at: string; late: boolean }[]
+  leave_requests: Leave[]
+  overdue: LeadTaskItem[]
+  due_today: LeadTaskItem[]
+  absent: { person_id: number; person: string; status: "absent" | "not_checked_in" }[]
+}
+
+export interface WeeklyTarget { week_start: string; week_end: string; target: number | null; approved: number }
+
+export interface FeedbackPhrase { id: number; text: string }
+
+/* ---------- chat (automatic group chats) ---------- */
+export type ChatChannelKind = "everyone" | "leads" | "team"
+
+export interface ChatMessage {
+  id: number; channel: string; sender_id: number; sender: string
+  /** null when deleted */
+  body: string | null; created_at: string; edited_at: string | null; deleted: boolean
+}
+
+export interface ChatChannel {
+  key: string; name: string; kind: ChatChannelKind; can_post: boolean; unread: number; last_message: ChatMessage | null
 }

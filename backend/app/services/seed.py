@@ -23,4 +23,6 @@ def seed_roles(db: Session) -> dict[RoleName, Role]:
             db.add(role)
             existing[name] = role
     db.flush()
+    from app.services.lead_service import ensure_default_phrases  # noqa: PLC0415 (avoid an import cycle)
+    ensure_default_phrases(db)
     return existing

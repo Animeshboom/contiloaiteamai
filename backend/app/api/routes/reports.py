@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import client_ip, require_lead_or_admin
+from app.core.deps import client_ip, require_admin, require_lead_or_admin
 from app.core.rate_limit import limiter
 from app.core.timeutils import studio_today
 from app.models import ReportStatus, User
-from app.schemas.reports import ReportApprove, ReportGenerate, ReportListItem, ReportOut, ReportUpdate
+from app.schemas.reports import (
+    ReportApprove, ReportComment, ReportGenerate, ReportListItem, ReportOut, ReportSubmit, ReportUpdate,
+)
 from app.services import report_metrics, scope
 from app.services import report_service as svc
 
@@ -37,6 +39,26 @@ def generate_report(request: Request, body: ReportGenerate, user: User = Depends
                     db: Session = Depends(get_db)):
     """Compute metrics, draft the narrative (Claude, or template fallback) and save a DRAFT report."""
     return svc.to_out(db, svc.generate(db, user, body, client_ip(request)))
+
+
+@router.get("/team-status")
+def team_status(report_date: date | None = None, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Admin: each team lead's report for the day and whether it has been sent."""
+    return svc.team_status(db, report_date or studio_today())
+
+
+@router.post("/{report_id}/submit", response_model=ReportOut)
+def submit_report(report_id: int, body: ReportSubmit, request: Request, user: User = Depends(require_lead_or_admin),
+                  db: Session = Depends(get_db)):
+    """Send the day report to the admin in the app, with the lead's issues / remarks."""
+    return svc.to_out(db, svc.submit_to_admin(db, user, report_id, body.issues, client_ip(request)))
+
+
+@router.post("/{report_id}/comment", response_model=ReportOut)
+def comment_report(report_id: int, body: ReportComment, request: Request, user: User = Depends(require_admin),
+                   db: Session = Depends(get_db)):
+    """Admin reply on a lead's report; the lead is notified."""
+    return svc.to_out(db, svc.comment(db, user, report_id, body.comment, client_ip(request)))
 
 
 @router.get("/{report_id}", response_model=ReportOut)

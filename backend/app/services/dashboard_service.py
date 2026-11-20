@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.timeutils import ensure_utc, studio_day_bounds_utc, studio_today, utcnow
 from app.models import (
-    Assignment, AssignmentAssignee, AssignmentStatus, Project, ProjectStatus, Submission, SubmissionStatus, User,
+    Assignment, AssignmentAssignee, AssignmentStatus, Project, ProjectStatus, Submission,
+    SubmissionStatus, User,
 )
 from app.services import assignment_service, attendance_service, scope
 
@@ -14,7 +15,7 @@ from app.services import assignment_service, attendance_service, scope
 def staff_overview(db: Session, actor: User, team_id: int | None = None) -> dict:
     today = studio_today()
     roster = attendance_service.roster(db, actor, today, team_id)
-    att = {"present": 0, "half_day": 0, "leave": 0, "absent": 0, "not_checked_in": 0}
+    att = {"present": 0, "half_day": 0, "leave": 0, "absent": 0, "not_checked_in": 0, "day_off": 0}
     for r in roster:
         att[r.status] = att.get(r.status, 0) + 1
 
@@ -33,7 +34,7 @@ def staff_overview(db: Session, actor: User, team_id: int | None = None) -> dict
         if assignment_service.is_overdue(a, now):
             overdue += 1
         for x in a.assignees:
-            if x.user_id not in member_ids:
+            if x.user_id not in member_ids or x.status == AssignmentStatus.REASSIGNED:
                 continue
             w = workload.setdefault(x.user_id, {"user_id": x.user_id, "full_name": x.user.full_name,
                                                 "active": 0, "submitted": 0, "approved": 0})
@@ -62,8 +63,22 @@ def staff_overview(db: Session, actor: User, team_id: int | None = None) -> dict
         "pending_reviews": db.scalar(pending_q) or 0,
         "active_projects": db.scalar(select(func.count(Project.id)).where(
             Project.deleted_at.is_(None), Project.status == ProjectStatus.ACTIVE)) or 0,
-        "workload": sorted(workload.values(), key=lambda w: w["full_name"]),
+        "workload": _with_targets(db, sorted(workload.values(), key=lambda w: w["full_name"])),
     }
+
+
+def _with_targets(db: Session, rows: list[dict]) -> list[dict]:
+    """Add this week's approved scenes, the weekly target and the private average rating to each person."""
+    from app.services import lead_service  # noqa: PLC0415 (lead_service imports this module's peers)
+    ids = [r["user_id"] for r in rows]
+    approved = lead_service.approved_this_week(db, ids)
+    targets = lead_service.targets_for(db, ids)
+    ratings = lead_service.average_ratings(db, ids)
+    for r in rows:
+        r["approved_this_week"] = approved.get(r["user_id"], 0)
+        r["weekly_target"] = targets.get(r["user_id"])
+        r["avg_rating"] = ratings.get(r["user_id"])
+    return rows
 
 
 def artist_overview(db: Session, artist: User) -> dict:

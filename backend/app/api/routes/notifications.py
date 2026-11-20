@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_any_user, require_admin
 from app.core.errors import Conflict, NotFound
 from app.core.timeutils import utcnow
 from app.models import EmailLog, EmailStatus, Notification, User
@@ -49,7 +49,7 @@ class EmailLogOut(BaseModel):
 
 @router.get("/notifications", response_model=list[NotificationOut])
 def list_notifications(unread_only: bool = False, limit: int = Query(default=50, ge=1, le=200),
-                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+                       user: User = Depends(get_any_user), db: Session = Depends(get_db)):
     q = select(Notification).where(Notification.user_id == user.id)
     if unread_only:
         q = q.where(Notification.read_at.is_(None))
@@ -57,13 +57,13 @@ def list_notifications(unread_only: bool = False, limit: int = Query(default=50,
 
 
 @router.get("/notifications/unread-count")
-def unread_count(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def unread_count(user: User = Depends(get_any_user), db: Session = Depends(get_db)):
     n = db.scalar(select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.read_at.is_(None)))
     return {"unread": n or 0}
 
 
 @router.post("/notifications/{notification_id}/read", response_model=NotificationOut)
-def mark_read(notification_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def mark_read(notification_id: int, user: User = Depends(get_any_user), db: Session = Depends(get_db)):
     n = db.get(Notification, notification_id)
     if not n or n.user_id != user.id:  # never reveal other users' notifications
         raise NotFound("Notification not found")
@@ -74,7 +74,7 @@ def mark_read(notification_id: int, user: User = Depends(get_current_user), db: 
 
 
 @router.post("/notifications/read-all")
-def mark_all_read(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def mark_all_read(user: User = Depends(get_any_user), db: Session = Depends(get_db)):
     res = db.execute(update(Notification).where(Notification.user_id == user.id, Notification.read_at.is_(None))
                      .values(read_at=utcnow()))
     db.commit()

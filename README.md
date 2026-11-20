@@ -62,22 +62,30 @@ Vercel proxies `/api/*` to Render, so the browser only ever talks to one origin 
 
 ## Local development (from source)
 
-Prerequisites: Python 3.11, Node.js 20+, Docker (for Postgres).
+Prerequisites: Python 3.11–3.14, Node.js 20+. Docker is optional (the application runs out-of-the-box on SQLite with mock email outbox).
+
+### One-Click Quick Start (Windows)
+Double-click `run_local.bat` or run:
+```powershell
+.\run_local.ps1
+```
+This automatically applies migrations, seeds sample studio demo accounts, and starts both backend (port 8000) and frontend (port 5173).
+
+Open **http://localhost:5173** to sign in. The login page has quick-autofill buttons for:
+- **Admin:** `admin@studiotrack.demo` / `Admin@12345`
+- **Lead:** `lead.anim@studiotrack.demo` / `Lead@12345`
+- **Artist:** `artist.arjun@studiotrack.demo` / `Artist@12345`
+
+### Manual Start (Terminal)
 
 ```bash
-cp .env.example .env                     # set the Gmail OAuth files (docs/GMAIL_SETUP.md)
-docker compose up -d db                  # Postgres on localhost:5434
-
+# Backend:
 cd backend
-py -3.11 -m venv .venv                   # macOS/Linux: python3.11 -m venv .venv
-.venv/Scripts/python -m pip install -r requirements-dev.txt
-.venv/Scripts/alembic upgrade head
-.venv/Scripts/python -m scripts.create_admin --email you@studio.com --name "Your Name"
-.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000     # API docs: http://localhost:8000/docs
+.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
 
-cd ../frontend
-npm install
-npm run dev                              # http://localhost:5173 (proxies /api to :8000)
+# Frontend:
+cd frontend
+npm run dev                              # http://localhost:5173
 ```
 
 > **OneDrive note:** this folder is inside OneDrive, which can lock files in `node_modules` or `.venv` while syncing (`EPERM` during installs). If that happens, pause syncing or exclude those folders.

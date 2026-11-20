@@ -4,11 +4,13 @@ import { AttendanceBadge, StatCard } from "@/components/common"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatMinutes, titleCase } from "@/lib/format"
+import { useShowCheckinTimes } from "@/lib/queries"
 import type { ReportMetrics } from "@/lib/types"
 
 /** Renders a deterministic metrics snapshot. Every figure here comes straight from the API. */
 export function ReportMetricsView({ m, compact }: { m: ReportMetrics; compact?: boolean }) {
   const t = m.totals
+  const showTimes = useShowCheckinTimes()
   return (
     <div className="space-y-4">
       <div className={compact ? "grid gap-3 sm:grid-cols-2" : "grid gap-3 sm:grid-cols-3 xl:grid-cols-6"}>
@@ -33,7 +35,7 @@ export function ReportMetricsView({ m, compact }: { m: ReportMetrics; compact?: 
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Artist</TableHead><TableHead>Attendance</TableHead>
+                <TableHead>Name</TableHead><TableHead>Attendance</TableHead>
                 <TableHead className="text-right">Active</TableHead><TableHead className="text-right">Submitted</TableHead>
                 <TableHead className="text-right">Approved</TableHead><TableHead className="text-right">Rejected</TableHead>
                 <TableHead className="text-right">Pending</TableHead><TableHead className="text-right">Delayed</TableHead>
@@ -45,7 +47,8 @@ export function ReportMetricsView({ m, compact }: { m: ReportMetrics; compact?: 
                   <TableCell><div className="font-medium">{a.name}</div><div className="text-xs text-muted-foreground">{a.job_title ?? ""}</div></TableCell>
                   <TableCell>
                     <AttendanceBadge status={a.attendance} />
-                    {a.check_in && <div className="mt-1 font-mono text-[11px] text-muted-foreground">{a.check_in}–{a.check_out ?? "…"} {a.worked_minutes != null && `· ${formatMinutes(a.worked_minutes)}`}</div>}
+                    {showTimes && a.check_in && <div className="mt-1 font-mono text-[11px] text-muted-foreground">{a.check_in}–{a.check_out ?? "…"} {a.worked_minutes != null && `· ${formatMinutes(a.worked_minutes)}`}</div>}
+                    {!showTimes && a.worked_minutes != null && <div className="mt-1 font-mono text-[11px] text-muted-foreground">{formatMinutes(a.worked_minutes)}</div>}
                   </TableCell>
                   {[a.active_assignments, a.scenes_submitted, a.scenes_approved, a.scenes_rejected, a.pending_reviews, a.delayed_assignments].map((v, i) => (
                     <TableCell key={i} className={`text-right font-mono tabular ${i === 5 && v ? "text-destructive" : ""}`}>{v}</TableCell>

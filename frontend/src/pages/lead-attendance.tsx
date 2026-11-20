@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from "react"
-import { ChevronLeft, ChevronRight, PencilLine } from "lucide-react"
+import { AlertTriangle, ChevronLeft, ChevronRight, PencilLine } from "lucide-react"
 
+import { StaffAttendanceExport } from "@/components/attendance-export"
+import { CheckInCard } from "@/components/check-in-card"
+import { MyMonthLine } from "@/components/month-stat"
+import { MyLeaveCard } from "@/components/my-leave"
 import { AttendanceTrendChart } from "@/components/charts"
 import { AttendanceBadge, EmptyState, ErrorState, LoadingRows, PageHeader, StatCard } from "@/components/common"
 import { Button } from "@/components/ui/button"
@@ -9,15 +13,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, Input, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth, useStudioDay } from "@/lib/auth-context"
 import { addDays, formatDate, formatMinutes, formatTime, isoToStudioLocal, studioLocalToIso } from "@/lib/format"
-import { useAction, useAttendanceSummary, useRoster } from "@/lib/queries"
+import { useAction, useAttendanceSummary, useRoster, useShowCheckinTimes } from "@/lib/queries"
 import type { AttendanceStatus, RosterRow } from "@/lib/types"
 
 export default function LeadAttendancePage() {
-  const { config, user } = useAuth()
-  const today = config?.studio_today ?? ""
-  const [day, setDay] = useState(today)
+  const { user } = useAuth()
+  const showTimes = useShowCheckinTimes()
+  const [day, setDay, today] = useStudioDay()
   const [editing, setEditing] = useState<RosterRow | null>(null)
   const roster = useRoster({ on: day })
   const summary = useAttendanceSummary({ end: today })
@@ -40,12 +44,18 @@ export default function LeadAttendancePage() {
       />
 
       <div className="space-y-6">
+        {user?.role === "team_lead" && (
+          <div className="space-y-3">
+            <CheckInCard />
+            <MyMonthLine />
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Present" value={counts.present ?? 0} tone="green" />
           <StatCard label="Half day" value={counts.half_day ?? 0} />
           <StatCard label="Leave" value={counts.leave ?? 0} tone="blue" />
-          <StatCard label="Absent" value={counts.absent ?? 0} tone={counts.absent ? "red" : "default"} />
-          <StatCard label="Not checked in" value={counts.not_checked_in ?? 0} hint={day === today ? "Today only" : undefined} />
+          <StatCard label="Absent" value={counts.absent ?? 0} tone={counts.absent ? "red" : "default"} hint="Includes no check-in by 12:00" />
+          <StatCard label="Not checked in" value={counts.not_checked_in ?? 0} hint={day === today ? "Today, until 12:00" : undefined} />
         </div>
 
         <Card>
@@ -61,8 +71,8 @@ export default function LeadAttendancePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>In</TableHead><TableHead>Out</TableHead>
-                      <TableHead>Worked</TableHead><TableHead>Note</TableHead><TableHead className="w-10" />
+                      <TableHead>Name</TableHead><TableHead>Status</TableHead>{showTimes && <><TableHead>In</TableHead><TableHead>Out</TableHead></>}
+                      <TableHead>Worked</TableHead><TableHead>This month</TableHead><TableHead>Note</TableHead><TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -73,11 +83,22 @@ export default function LeadAttendancePage() {
                           <div className="text-xs text-muted-foreground">{r.job_title ?? "—"}{user?.role === "admin" && r.team_name ? ` · ${r.team_name}` : ""}</div>
                         </TableCell>
                         <TableCell><AttendanceBadge status={r.status} /></TableCell>
-                        <TableCell className="font-mono tabular">{formatTime(r.record?.check_in_at)}</TableCell>
-                        <TableCell className="font-mono tabular">{formatTime(r.record?.check_out_at)}</TableCell>
+                        {showTimes && <>
+                          <TableCell className="font-mono tabular">{formatTime(r.record?.check_in_at)}</TableCell>
+                          <TableCell className="font-mono tabular">{formatTime(r.record?.check_out_at)}</TableCell>
+                        </>}
                         <TableCell className="font-mono tabular">{formatMinutes(r.record?.worked_minutes)}</TableCell>
-                        <TableCell className="max-w-[16rem] truncate text-xs text-muted-foreground" title={r.record?.notes ?? ""}>
-                          {r.record?.corrected_at && <span className="mr-1 text-primary">Corrected ·</span>}{r.record?.notes ?? ""}
+                        <TableCell>
+                          {r.month ? (
+                            <span className={r.month.low ? "inline-flex items-center gap-1 font-mono text-sm text-destructive" : "font-mono text-sm"}
+                              title={`${r.month.present}/${r.month.counted_days} days`}>
+                              {r.month.low && <AlertTriangle className="size-3.5" aria-label="Low attendance" />}
+                              {r.month.pct == null ? "—" : `${r.month.pct}%`}
+                            </span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className="max-w-[16rem] truncate text-xs text-muted-foreground" title={r.record?.notes ?? r.record?.work_note ?? ""}>
+                          {r.record?.corrected_at && <span className="mr-1 text-primary">Corrected ·</span>}{r.record?.notes ?? r.record?.work_note ?? ""}
                         </TableCell>
                         <TableCell>
                           {r.user_id !== user?.id && (
@@ -93,9 +114,21 @@ export default function LeadAttendancePage() {
         </Card>
 
         <Card>
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Monthly export</CardTitle>
+              <CardDescription>One row per person, one column per day (P / H / L / A / - / off), with totals, hours and attendance %.</CardDescription>
+            </div>
+            <StaffAttendanceExport />
+          </CardHeader>
+        </Card>
+
+        <Card>
           <CardHeader><CardTitle>Last 14 days</CardTitle><CardDescription>Headcount by status</CardDescription></CardHeader>
           <CardContent>{summary.data ? <AttendanceTrendChart data={summary.data} /> : <LoadingRows rows={3} />}</CardContent>
         </Card>
+
+        {user?.role === "team_lead" && <MyLeaveCard />}
       </div>
 
       {editing && <CorrectionDialog row={editing} day={day} onClose={() => setEditing(null)} />}

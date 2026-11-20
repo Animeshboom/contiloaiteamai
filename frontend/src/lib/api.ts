@@ -16,6 +16,7 @@ export class ApiError extends Error {
 
 let token: string | null = localStorage.getItem(TOKEN_KEY)
 let onUnauthorized: (() => void) | null = null
+let onMfaRequired: (() => void) | null = null
 
 export const auth = {
   get token() {
@@ -28,6 +29,10 @@ export const auth = {
   },
   onUnauthorized(cb: () => void) {
     onUnauthorized = cb
+  },
+  /** An admin whose session has no two-step code yet (403 "mfa_required" from admin data routes). */
+  onMfaRequired(cb: () => void) {
+    onMfaRequired = cb
   },
 }
 
@@ -63,7 +68,9 @@ async function parse<T>(res: Response, path: string): Promise<T> {
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    if (res.status === 401 && path !== "/auth/login") onUnauthorized?.()
+    // A wrong password / code at sign-in (or a lockout, 429) must not sign anyone out.
+    if (res.status === 401 && !path.startsWith("/auth/login")) onUnauthorized?.()
+    if (res.status === 403 && data.error === "mfa_required") onMfaRequired?.()
     const fieldErrors = Array.isArray(data.errors) ? data.errors : []
     const message =
       fieldErrors.length > 0

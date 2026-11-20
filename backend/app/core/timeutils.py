@@ -1,5 +1,5 @@
 """All timestamps are stored in UTC; 'work dates' are computed in the studio timezone."""
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from app.core.config import get_settings
 
@@ -17,6 +17,12 @@ def studio_today() -> date:
     return utcnow().astimezone(get_settings().tz).date()
 
 
+def is_work_day(d: date) -> bool:
+    """Weekday rule and HOLIDAYS from settings only. Use app.services.calendar for database holidays too."""
+    s = get_settings()
+    return d.weekday() in s.work_days and d not in s.holidays
+
+
 def to_studio(dt: datetime) -> datetime:
     return ensure_utc(dt).astimezone(get_settings().tz)
 
@@ -27,6 +33,12 @@ def studio_day_bounds_utc(d: date) -> tuple[datetime, datetime]:
     start = datetime.combine(d, time.min, tzinfo=tz)
     end = datetime.combine(d, time.max, tzinfo=tz)
     return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+
+
+def studio_hour(d: date, hour: int) -> datetime:
+    """UTC instant of ``hour`` o'clock (0-24; 24 = end of day) on studio date ``d``."""
+    tz = get_settings().tz
+    return (datetime.combine(d, time.min, tzinfo=tz) + timedelta(hours=hour)).astimezone(timezone.utc)
 
 
 def studio_eod(d: date) -> datetime:

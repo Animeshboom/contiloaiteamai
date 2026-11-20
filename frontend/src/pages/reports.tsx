@@ -5,12 +5,13 @@ import { FileText, Sparkles } from "lucide-react"
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from "@/components/common"
 import { ReportMetricsView } from "@/components/report-metrics"
 import { ReportStatusBadge } from "@/components/report-status"
+import { TeamReportStatusCard } from "@/components/team-report-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox, Field, Input, NativeSelect } from "@/components/ui/form-controls"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth, useStudioDay } from "@/lib/auth-context"
 import { formatDate, formatDateTime } from "@/lib/format"
 import { useAction, useProject, useProjects, useReportMetrics, useReports, useTeams, useUsers } from "@/lib/queries"
 import type { Report } from "@/lib/types"
@@ -21,19 +22,18 @@ export default function ReportsPage() {
   const [params] = useSearchParams()
   const base = user?.role === "admin" ? "/admin/reports" : "/lead/reports"
   const isAdmin = user?.role === "admin"
+  const emailOn = config?.email_enabled !== false
 
   // Deep links from notifications (?open=ID)
   const openId = params.get("open")
   useEffect(() => { if (openId) navigate(`${base}/${openId}`, { replace: true }) }, [openId, base, navigate])
 
-  const today = config?.studio_today ?? ""
-  const [day, setDay] = useState(today)
+  const [day, setDay, today] = useStudioDay()
   const [projectId, setProjectId] = useState("")
   const [episodeId, setEpisodeId] = useState("")
   const [artistId, setArtistId] = useState("")
   const [teamId, setTeamId] = useState("")
   const [useAi, setUseAi] = useState(true)
-  useEffect(() => { if (!day && today) setDay(today) }, [today, day])
 
   const projects = useProjects()
   const project = useProject(projectId ? Number(projectId) : undefined)
@@ -51,12 +51,14 @@ export default function ReportsPage() {
       report_date: day, project_id: projectId ? Number(projectId) : null, episode_id: episodeId ? Number(episodeId) : null,
       artist_id: artistId ? Number(artistId) : null, team_id: isAdmin && teamId ? Number(teamId) : null, use_ai: useAi && !!config?.ai_enabled,
     }),
-    { success: "Report drafted — review it before sending", invalidate: [["reports"], ["notifications"]], onSuccess: (r) => navigate(`${base}/${r.id}`) },
+    { success: config?.email_enabled === false ? "Report drafted — review it, then send it to the admin" : "Report drafted — review it before sending", invalidate: [["reports"], ["notifications"]], onSuccess: (r) => navigate(`${base}/${r.id}`) },
   )
 
   return (
     <>
       <PageHeader title={isAdmin ? "Reports" : "EOD reports"} description="Consolidated end-of-day production report. Figures come from the records; Claude only drafts the wording." />
+
+      {isAdmin && <TeamReportStatusCard day={day} />}
 
       <Card className="mb-6">
         <CardHeader><CardTitle>Report scope</CardTitle></CardHeader>
@@ -111,15 +113,18 @@ export default function ReportsPage() {
         <CardContent className="px-2">
           {history.isLoading ? <LoadingRows rows={3} /> : !history.data?.length ? <EmptyState icon={<FileText />} title="No reports yet" description="Generate today's report above." /> : (
             <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Subject</TableHead><TableHead>Recipients</TableHead><TableHead>Sent</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Subject</TableHead>{emailOn && <TableHead>Recipients</TableHead>}<TableHead>Sent</TableHead></TableRow></TableHeader>
               <TableBody>
                 {history.data.map((r) => (
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`${base}/${r.id}`)}>
                     <TableCell className="whitespace-nowrap">{formatDate(r.report_date)}<div className="font-mono text-[11px] text-muted-foreground">#{r.id}</div></TableCell>
-                    <TableCell><ReportStatusBadge status={r.status} /></TableCell>
+                    <TableCell>{emailOn || r.status !== "draft" ? <ReportStatusBadge status={r.status} /> : r.submitted_at ? <span className="text-xs text-success">Sent to admin</span> : <ReportStatusBadge status={r.status} />}</TableCell>
                     <TableCell className="max-w-xs truncate text-sm">{r.subject}</TableCell>
-                    <TableCell className="max-w-[12rem] truncate font-mono text-xs">{r.recipients.join(", ")}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{r.sent_at ? <>{formatDateTime(r.sent_at)}<div className="text-muted-foreground">by {r.sent_by_name}</div></> : "—"}</TableCell>
+                    {emailOn && <TableCell className="max-w-[12rem] truncate font-mono text-xs">{r.recipients.join(", ")}</TableCell>}
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {r.submitted_at ? <>To admin {formatDateTime(r.submitted_at)}{r.issues && <div className="text-warning">Has issues</div>}</>
+                        : r.sent_at ? <>{formatDateTime(r.sent_at)}<div className="text-muted-foreground">by {r.sent_by_name}</div></> : "—"}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

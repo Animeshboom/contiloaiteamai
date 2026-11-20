@@ -17,6 +17,15 @@ os.environ["MAIL_OUTBOX_DIR"] = os.path.join(_tmpdir, "mail_outbox")
 os.environ["EMAIL_APPROVAL_SECRET"] = "test-approval-secret-0123456789-abcdefghij"
 os.environ["GMAIL_BACKEND"] = "mock"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-0123456789abcdef-0123456789"
+# Every day is a work day so date-relative tests ("yesterday was absent") pass on any weekday.
+# Tests for WORK_DAYS / HOLIDAYS override this with monkeypatch.
+os.environ["WORK_DAYS"] = "[0,1,2,3,4,5,6]"
+os.environ["EMAIL_ENABLED"] = "true"  # the suite covers email; it is off by default for real use
+os.environ["AUTH_PROVIDER"] = "local"
+# Staff "absent if not checked in by noon" is time-of-day dependent; tests opt in with monkeypatch.
+os.environ["STAFF_CHECKIN_CUTOFF_HOUR"] = "24"
+# Admin two-step login is on in real use; tests that cover it turn it on with monkeypatch.
+os.environ["ADMIN_MFA_REQUIRED"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -24,6 +33,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import calendar  # noqa: E402
 from tests.fixtures import DEMO_PASSWORDS, seed_demo  # noqa: E402
 from app.models import RoleName  # noqa: E402
 
@@ -51,6 +61,7 @@ def _fresh_db():
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed_demo(db)
+    calendar.invalidate()
     yield
 
 

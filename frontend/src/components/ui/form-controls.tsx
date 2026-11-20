@@ -6,7 +6,7 @@ import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const fieldBase =
-  "flex w-full rounded-md border border-input bg-background/40 px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+  "flex w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
 
 export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => (
@@ -25,7 +25,7 @@ Textarea.displayName = "Textarea"
 /** Native select styled to match — accessible and keyboard-friendly by default. */
 export const NativeSelect = React.forwardRef<HTMLSelectElement, React.ComponentProps<"select">>(
   ({ className, children, ...props }, ref) => (
-    <select ref={ref} className={cn(fieldBase, "h-9 appearance-none bg-[length:16px] bg-[right_0.6rem_center] bg-no-repeat pr-8", className)}
+    <select ref={ref} className={cn(fieldBase, "h-9 appearance-none bg-[length:16px] bg-[right_0.6rem_center] bg-no-repeat pr-8 [&_option]:bg-popover [&_option]:text-popover-foreground", className)}
       style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
       {...props}>
       {children}

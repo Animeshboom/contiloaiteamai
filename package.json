@@ -1,0 +1,15 @@
+{
+  "name": "studiotrack-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StudioTrack AI - Production control & workforce platform for AI film studios",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./run_local.ps1",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:frontend": "npm --prefix frontend test",
+    "test:backend": "backend\\.venv\\Scripts\\pytest.exe backend\\tests",
+    "seed": "backend\\.venv\\Scripts\\python.exe -m scripts.seed_demo"
+  }
+}
+

@@ -62,6 +62,19 @@ def reset_password(user_id: int, body: PasswordReset, request: Request, actor: U
     org_service.reset_password(db, actor, user_id, body.new_password, client_ip(request))
 
 
+@users.post("/{user_id}/unlock", response_model=UserOut)
+def unlock(user_id: int, request: Request, actor: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Clear a lockout caused by too many wrong passwords."""
+    return org_service.unlock(db, actor, user_id, client_ip(request))
+
+
+@users.post("/{user_id}/reset-two-step", response_model=UserOut)
+def reset_two_step(user_id: int, request: Request, actor: User = Depends(require_admin),
+                   db: Session = Depends(get_db)):
+    """Another admin lost their phone: turn their two-step login off so they can set it up again."""
+    return org_service.reset_two_step(db, actor, user_id, client_ip(request))
+
+
 @teams.get("", response_model=list[TeamOut])
 def list_teams(actor: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
     return org_service.list_teams(db, actor)

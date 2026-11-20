@@ -6,7 +6,7 @@ Zero scenes = a non-scene deliverable (description required). Each artist gets a
 """
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, Forbidden, ValidationFailed
@@ -41,12 +41,15 @@ def aggregate_status(statuses: list[AssignmentStatus]) -> AssignmentStatus:
 
 
 def recompute_status(a: Assignment) -> None:
-    a.status = aggregate_status([x.status for x in a.assignees])
+    a.status = aggregate_status([x.status for x in a.assignees if x.status != AssignmentStatus.REASSIGNED])
 
 
 def sync_status(db: Session, x: AssignmentAssignee) -> None:
     """Re-derive one artist's status from records, then the assignment's aggregate."""
     db.flush()
+    if x.status == AssignmentStatus.REASSIGNED:  # history only; never re-derived
+        recompute_status(x.assignment)
+        return
     x.status = progress.derive_assignee_status(db, x)
     if x.status in DONE and x.completed_at is None:
         x.completed_at = utcnow()
@@ -95,7 +98,7 @@ def _validate_artists(db: Session, actor: User, artist_ids: list[int]) -> list[U
     for u in artists:
         if not u.is_active or u.deleted_at is not None:
             raise ValidationFailed(f"{u.full_name} is not an active employee")
-        if u.role_name != RoleName.ARTIST:
+        if not scope.is_worker(u):
             raise ValidationFailed(f"{u.full_name} is not an artist")
         scope.ensure_can_manage_artist(db, actor, u)
     return artists
@@ -252,7 +255,12 @@ def list_for(db: Session, actor: User, *, status: AssignmentStatus | None = None
         q = q.where(Assignment.assignment_date == on_date)
     if overdue:
         q = q.where(Assignment.deadline < utcnow(), Assignment.status.not_in(list(DONE)))
-    return list(db.scalars(q.order_by(Assignment.deadline.asc(), Assignment.id.desc()).limit(limit)))
+    # Open work first (soonest deadline first), then finished work (most recent first), so the
+    # limit only ever trims old finished assignments, never new or open ones.
+    done = Assignment.status.in_(list(DONE))
+    order = (case((done, 1), else_=0), case((done, None), else_=Assignment.deadline).asc(),
+             Assignment.deadline.desc(), Assignment.id.desc())
+    return list(db.scalars(q.order_by(*order).limit(limit)))
 
 
 # ---------------- artist progress & completion ----------------
@@ -262,6 +270,8 @@ def my_slot(db: Session, artist: User, assignment_id: int) -> AssignmentAssignee
     x = next((x for x in a.assignees if x.user_id == artist.id), None)
     if x is None:
         raise Forbidden("You are not assigned to this assignment")
+    if x.status == AssignmentStatus.REASSIGNED:
+        raise Forbidden("This task was reassigned to someone else")
     return x
 
 

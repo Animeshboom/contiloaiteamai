@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react"
 import { Building2, Pencil, Plus, Trash2, Users } from "lucide-react"
 
 import { EmptyState, ErrorState, LoadingRows, PageHeader } from "@/components/common"
+import { FeedbackPhrasesCard } from "@/components/feedback-phrases"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -48,6 +49,7 @@ export default function TeamsPage() {
           ))}
         </div>
       )}
+      <div className="mt-6 max-w-2xl"><FeedbackPhrasesCard /></div>
       {dialog && <TeamDialog team={dialog.team} onClose={() => setDialog(null)} />}
       <ConfirmDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} destructive loading={del.isPending} confirmLabel="Delete team"
         title={`Delete ${deleting?.name}?`} description="Only teams with no active members can be deleted. Move members to another team first."
