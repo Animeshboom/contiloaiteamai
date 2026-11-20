@@ -1,32 +1,49 @@
-# Render Blueprint: StudioTrack API (Docker), FREE plan. Database: Neon free Postgres (https://neon.tech).
+# Render Blueprint: StudioTrack API (FastAPI in Docker), FREE plan.
+#   Frontend: Cloudflare Pages (frontend/, see PRODUCTION_DEPLOYMENT_GUIDE.md)
+#   Database: Neon free Postgres (DATABASE_URL)
 # Render dashboard -> New -> Blueprint -> pick this GitHub repo. Fill in the "sync: false" values when prompted.
-# The web app is hosted on Vercel (frontend/vercel.json), which proxies /api/* to this service.
 #
-# Free-plan limits: the service sleeps after ~15 min without traffic (next visit waits ~1 min while it wakes),
-# uploaded files are lost on each redeploy/restart, and reminders/email dispatch pause while asleep.
-# To upgrade: set plan: starter and add a disk (mountPath /app/data) for persistent uploads.
+# On every start the container runs `alembic upgrade head` (additive migrations only) and creates any
+# missing starter accounts from ADMIN_*/LEAD_*/ARTIST_*. See backend/docker-entrypoint.sh.
+#
+# Free-plan limits: sleeps after ~15 min without traffic (next request waits ~30-60 s), uploaded files are
+# lost on each redeploy/restart, background jobs (reminders, email dispatch) pause while asleep.
 services:
   - type: web
-    name: studiotrack-api            # public URL: https://studiotrack-api.onrender.com (update frontend/vercel.json if it differs)
+    name: studiotrack-api            # URL is usually https://studiotrack-api.onrender.com; Render adds a suffix if taken
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
-    region: singapore
+    region: singapore                # keep in the same region as the Neon database (AWS ap-southeast-1)
+    branch: main
     healthCheckPath: /api/health
-    autoDeploy: true
+    # Deploy a new commit only after its GitHub Actions checks pass (.github/workflows/ci.yml).
+    autoDeployTrigger: checksPass
+    # Frontend-only or docs-only commits do not redeploy the API (a redeploy wipes free-plan uploads).
+    buildFilter:
+      paths:
+        - backend/**
+        - mcp_servers/**
+        - Dockerfile
+        - .dockerignore
+        - render.yaml
+      ignoredPaths:
+        - backend/tests/**
     envVars:
       - key: ENVIRONMENT
         value: production
-      - key: DATABASE_URL             # Neon connection string: postgresql://...neon.tech/neondb?sslmode=require
+      - key: DATABASE_URL             # Neon DIRECT connection string (host without "-pooler"), with ?sslmode=require
         sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: EMAIL_APPROVAL_SECRET
         generateValue: true
-      - key: APP_BASE_URL             # your Vercel URL, e.g. https://studiotrack.vercel.app
+      - key: APP_BASE_URL             # Cloudflare Pages URL, e.g. https://studiotrack-ai.pages.dev
         sync: false
-      - key: CORS_ORIGINS             # JSON array with the same URL, e.g. ["https://studiotrack.vercel.app"]
+      - key: CORS_ORIGINS             # JSON array with the same URL, e.g. ["https://studiotrack-ai.pages.dev"]
+        sync: false
+      - key: CORS_ORIGIN_REGEX        # optional: allow Pages preview builds, e.g. ^https://[a-z0-9-]+\.studiotrack-ai\.pages\.dev$
         sync: false
       - key: STUDIO_TIMEZONE
         value: Asia/Kolkata
@@ -36,9 +53,9 @@ services:
         value: mcp
       - key: GMAIL_BACKEND
         value: gmail
-      - key: GMAIL_CREDENTIALS_JSON   # optional at first: emails queue until set (docs/DEPLOY_STEPS.txt part 4)
+      - key: GMAIL_CREDENTIALS_JSON   # optional: emails stay queued until set (docs/GMAIL_SETUP.md)
         sync: false
-      - key: GMAIL_TOKEN_JSON         # optional at first: token JSON from `python -m gmail_mcp.authorize`
+      - key: GMAIL_TOKEN_JSON         # optional: token JSON from `python -m gmail_mcp.authorize`
         sync: false
       - key: EMAIL_SENDER
         sync: false
@@ -46,20 +63,19 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-opus-5-5
-      - key: ADMIN_EMAIL              # first administrator, created on first start
+      - key: ADMIN_EMAIL              # first administrator, created on first start if missing
         sync: false
       - key: ADMIN_PASSWORD           # min 12 chars; delete this variable after your first sign-in
         sync: false
       - key: ADMIN_NAME
         value: Studio Admin
-      - key: LEAD_EMAIL               # starter Team Lead (leads TEAM_NAME)
+      - key: LEAD_EMAIL               # optional starter Team Lead (leads TEAM_NAME)
         sync: false
       - key: LEAD_PASSWORD            # min 12 chars
         sync: false
-      - key: ARTIST_EMAIL             # starter Artist (member of TEAM_NAME)
+      - key: ARTIST_EMAIL             # optional starter Artist (member of TEAM_NAME)
         sync: false
       - key: ARTIST_PASSWORD          # min 12 chars
         sync: false
       - key: TEAM_NAME
         value: Production Team
-

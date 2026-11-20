@@ -63,6 +63,25 @@ def test_cors_allows_frontend_origin(client):
     assert "access-control-allow-origin" not in r.headers
 
 
+def test_cors_origin_regex_allows_preview_origins_only():
+    from fastapi.middleware.cors import CORSMiddleware
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    app_ = Starlette()
+    app_.add_middleware(CORSMiddleware, allow_origins=["https://studiotrack-ai.pages.dev"], allow_methods=["POST"],
+                        allow_origin_regex=r"^https://[a-z0-9-]+\.studiotrack-ai\.pages\.dev$")
+    c = TestClient(app_)
+
+    def allowed(origin):
+        r = c.options("/x", headers={"Origin": origin, "Access-Control-Request-Method": "POST"})
+        return r.headers.get("access-control-allow-origin") == origin
+
+    assert allowed("https://studiotrack-ai.pages.dev")
+    assert allowed("https://3f2a1b9c.studiotrack-ai.pages.dev")
+    assert not allowed("https://evil.pages.dev")
+    assert not allowed("https://x.studiotrack-ai.pages.dev.evil.com")
+
 
 def test_production_refuses_placeholder_secrets():
     from app.core.config import Settings
@@ -74,11 +93,14 @@ def test_production_refuses_placeholder_secrets():
     assert "DATABASE_URL" in problems
     assert "GMAIL_BACKEND" in problems  # test env uses the mock backend
     assert "APP_BASE_URL" in problems
+    assert "CORS_ORIGINS" in problems  # still the localhost default
     good_kwargs = dict(environment="production", jwt_secret_key="x" * 48, email_approval_secret="y" * 48,
                        email_provider="mcp", database_url="postgresql+psycopg://u:p@db:5432/studiotrack",
                        gmail_backend="gmail", gmail_credentials_file="/s/creds.json", gmail_token_file="/s/token.json",
-                       app_base_url="https://studiotrack.example.com")
+                       app_base_url="https://studiotrack.example.com", cors_origins=["https://studiotrack.example.com"])
     assert Settings(**good_kwargs).production_problems() == []
+    wildcard = Settings(**{**good_kwargs, "cors_origins": ["*"]})
+    assert any("CORS_ORIGINS" in p for p in wildcard.production_problems())
     # Gmail can be added after the first deploy: the app starts, emails wait in the outbox.
     no_gmail = Settings(**{**good_kwargs, "gmail_credentials_file": None, "gmail_token_file": None})
     assert no_gmail.production_problems() == [] and not no_gmail.email_configured

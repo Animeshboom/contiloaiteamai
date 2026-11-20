@@ -1,3 +1,6 @@
+NOTE (2026-11-20): SUPERSEDED. The project now deploys to Cloudflare Pages + Render + Neon.
+See PRODUCTION_DEPLOYMENT_GUIDE.md. This file is kept for reference only; do not follow it.
+
 STUDIOTRACK AI - DEPLOY STEPS (copy-paste checklist)
 =====================================================
 
