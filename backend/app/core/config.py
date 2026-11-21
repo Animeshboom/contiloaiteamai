@@ -39,10 +39,13 @@ class Settings(BaseSettings):
     chat_retention_days: int = 90  # chat messages older than this are deleted automatically  # people below this month's attendance % are flagged for leads and admins
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]  # env: JSON array
-    # Optional regex for extra origins, e.g. Cloudflare Pages preview builds:
-    #   ^https://[a-z0-9-]+\.studiotrack-ai\.pages\.dev$     (unset = only CORS_ORIGINS are allowed)
-    cors_origin_regex: str | None = None
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://contiloaiteamai.vercel.app",
+    ]  # env: JSON array
+    # Optional regex for extra origins, e.g. Vercel / Cloudflare preview builds:
+    cors_origin_regex: str | None = r"^https://.*\.vercel\.app$"
 
     # Studio
     studio_timezone: str = "Asia/Kolkata"
