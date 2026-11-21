@@ -154,7 +154,10 @@ async def open_gateway() -> AsyncIterator[ToolCaller]:
         if s.gmail_mcp_url:
             from mcp.client.streamable_http import streamablehttp_client  # noqa: PLC0415
 
-            async with streamablehttp_client(s.gmail_mcp_url) as (read, write, _):
+            url = s.gmail_mcp_url.rstrip("/")
+            if not url.endswith("/mcp"):
+                url = f"{url}/mcp"
+            async with streamablehttp_client(url) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     yield _McpCaller(session)

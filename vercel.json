@@ -8,6 +8,19 @@
     "backend": {
       "root": "backend",
       "framework": "fastapi",
+      "entrypoint": "main:app",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "mcp_servers",
+          "format": "url",
+          "env": "GMAIL_MCP_URL"
+        }
+      ]
+    },
+    "mcp_servers": {
+      "root": "mcp_servers",
+      "runtime": "python",
       "entrypoint": "main:app"
     }
   },
@@ -53,13 +66,13 @@
   ],
   "rewrites": [
     {
-      "source": "/api",
+      "source": "/api/(.*)",
       "destination": {
         "service": "backend"
       }
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api",
       "destination": {
         "service": "backend"
       }
