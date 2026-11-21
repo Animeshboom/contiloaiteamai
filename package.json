@@ -5,6 +5,7 @@
   "description": "StudioTrack AI - Production control & workforce platform for AI film studios",
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File ./run_local.ps1",
+    "build": "npm --prefix frontend run build",
     "dev:frontend": "npm --prefix frontend run dev",
     "build:frontend": "npm --prefix frontend run build",
     "test:frontend": "npm --prefix frontend test",
