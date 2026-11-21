@@ -1,3 +1,12 @@
+---
+title: Contiloe StudioTrack AI API
+emoji: 🎬
+colorFrom: red
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
+
 # StudioTrack AI
 
 StudioTrack AI is an internal production and workforce platform for an AI film studio. It covers:

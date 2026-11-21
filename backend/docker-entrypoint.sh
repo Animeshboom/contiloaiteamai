@@ -23,9 +23,9 @@ alembic upgrade head
 # Creates the starter admin / team lead / artist from ADMIN_*, LEAD_*, ARTIST_* if set and not yet present.
 python -m scripts.create_admin --bootstrap
 
-# Trust X-Forwarded-* from the proxy in front (nginx, Render, Vercel) so rate limiting and audit
+# Trust X-Forwarded-* from the proxy in front (nginx, Render, Vercel, Hugging Face) so rate limiting and audit
 # logs see the real client IP. Restrict FORWARDED_ALLOW_IPS if the API is directly reachable.
 exec uvicorn app.main:app \
-  --host 0.0.0.0 --port "${PORT:-8000}" \
+  --host 0.0.0.0 --port "${PORT:-7860}" \
   --proxy-headers --forwarded-allow-ips="${FORWARDED_ALLOW_IPS:-*}" \
   --no-server-header
