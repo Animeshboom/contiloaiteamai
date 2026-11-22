@@ -132,7 +132,8 @@ def test_production_refuses_placeholder_secrets():
     from app.core.config import Settings
     bad = Settings(environment="production", jwt_secret_key="dev-only-secret-change-me-0123456789abcdef",
                    email_approval_secret="change-me-to-a-long-random-string-at-least-32-chars", email_provider="mock",
-                   database_url="postgresql+psycopg://studiotrack:studiotrack@localhost:5434/studiotrack")
+                   database_url="postgresql+psycopg://studiotrack:studiotrack@localhost:5434/studiotrack",
+                   cors_origins=["http://localhost:5173", "http://127.0.0.1:5173"])
     problems = " ".join(bad.production_problems())
     assert "JWT_SECRET_KEY" in problems and "EMAIL_APPROVAL_SECRET" in problems and "EMAIL_PROVIDER" in problems
     assert "DATABASE_URL" in problems

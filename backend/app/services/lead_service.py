@@ -284,9 +284,11 @@ def send_noon_summaries(db: Session) -> int:
 # ---------------- evening summary (background job) ----------------
 
 def send_evening_summaries(db: Session) -> int:
-    """At the EOD hour on work days, each active team lead gets one in-app summary of their people's day."""
+    """At the 6:40 PM EOD review window (20 mins before the 7:00 PM EOD deadline on work days),
+    each active team lead gets one in-app summary of their people's day to review, check Drive deliverables,
+    and prepare their report for the admin."""
     d = studio_today()
-    if not is_work_day(d) or utcnow() < studio_eod(d):
+    if not is_work_day(d) or utcnow() < studio_eod(d) - timedelta(minutes=20):
         return 0
     sent = 0
     leads = db.scalars(select(User).join(User.role).where(
@@ -304,14 +306,15 @@ def send_evening_summaries(db: Session) -> int:
             SubmissionDeliverable.approved_at >= start, SubmissionDeliverable.approved_at <= end)) or 0
         t = today(db, lead)
         late = sorted({o["person"] for o in t["overdue"]})
-        msg = (f"{submitted} submission(s) today, {approved} scene(s) approved, "
+        msg = (f"6:40 PM EOD Review Window: {submitted} submission(s) today, {approved} scene(s) approved, "
                f"{t['counts']['reviews']} waiting for review, {t['counts']['overdue']} overdue")
         if late:
             msg += ": " + ", ".join(late[:8]) + (f" and {len(late) - 8} more" if len(late) > 8 else "")
         report_id = _ensure_draft(db, lead, d)
         if notification_service.notify(
-                db, user_id=lead.id, event_type="evening_summary", title=f"Today's report is ready ({d:%d %b})",
-                message=msg + ". Add issues and send it to the admin.",
+                db, user_id=lead.id, event_type="evening_summary",
+                title=f"EOD Review Open (6:40 PM) — {d:%d %b}",
+                message=msg + ". Check Drive playblasts, write remarks, and submit to Admin by 7:00 PM.",
                 link=f"/lead/reports/{report_id}" if report_id else "/lead/reports",
                 entity_type="daily_report" if report_id else "user", entity_id=report_id or lead.id,
                 dedupe_key=f"lead:{lead.id}:evening:{d.isoformat()}"):
@@ -340,10 +343,12 @@ def _ensure_draft(db: Session, lead: User, d: date) -> int | None:
 
 
 def send_report_reminders(db: Session) -> int:
-    """One hour after the EOD hour: leads who haven't sent today's report to the admin get a reminder."""
+    """At 7:00 PM EOD deadline on work days: leads who haven't sent today's report to the admin
+    trigger the 7:00 PM safety net auto-dispatch so production metrics & Drive links reach Admin immediately."""
     from app.models import DailyReport  # noqa: PLC0415
+    from app.services import report_service  # noqa: PLC0415
     d = studio_today()
-    if not is_work_day(d) or utcnow() < studio_eod(d) + timedelta(hours=1):
+    if not is_work_day(d) or utcnow() < studio_eod(d):
         return 0
     sent = 0
     for lead in db.scalars(select(User).where(User.is_active.is_(True), User.deleted_at.is_(None))).all():
@@ -354,11 +359,26 @@ def send_report_reminders(db: Session) -> int:
         if any(r.submitted_at for r in reports):
             continue
         draft = next((r for r in reports if r.auto_generated), None)
-        if notification_service.notify(
-                db, user_id=lead.id, event_type="report_reminder", title="Reminder: send today's report",
-                message="Your team's day report hasn't been sent to the admin yet.",
-                link=f"/lead/reports/{draft.id}" if draft else "/lead/reports", entity_type="user",
-                entity_id=lead.id, dedupe_key=f"lead:{lead.id}:report_reminder:{d.isoformat()}"):
-            sent += 1
+        if not draft and reports:
+            draft = reports[0]
+        if not draft:
+            draft_id = _ensure_draft(db, lead, d)
+            if draft_id:
+                draft = db.get(DailyReport, draft_id)
+        if draft and draft.submitted_at is None:
+            note = "[Auto-dispatched at 7:00 PM EOD safety net]"
+            if draft.issues:
+                note = f"{draft.issues}\n{note}"
+            try:
+                report_service.submit_to_admin(db, lead, draft.id, issues=note, ip=None)
+                notification_service.notify(
+                    db, user_id=lead.id, event_type="report_reminder",
+                    title="Reminder: Report dispatched to Admin (7:00 PM safety net)",
+                    message="Your team's EOD report was automatically dispatched to the admin.",
+                    link=f"/lead/reports/{draft.id}", entity_type="daily_report", entity_id=draft.id,
+                    dedupe_key=f"lead:{lead.id}:auto_dispatch:{d.isoformat()}")
+                sent += 1
+            except Exception:
+                db.rollback()
     db.commit()
     return sent

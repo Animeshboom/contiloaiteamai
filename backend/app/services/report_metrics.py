@@ -199,6 +199,21 @@ def compute(db: Session, actor: User, report_date: date, *, project_id: int | No
         labels["team"] = db.scalar(select(Team.name).where(Team.id == team_id))
     team_names = sorted({u.team.name for u in members if u.team})
 
+    deliverable_links = []
+    for s in subs_today:
+        for link in (s.output_links or []):
+            deliverable_links.append({
+                "submission_id": s.id,
+                "artist_id": s.artist_id,
+                "artist_name": per.get(s.artist_id, {}).get("name") or s.artist.full_name,
+                "url": link,
+                "is_drive": "drive.google.com" in link.lower(),
+                "scenes": [d.label for d in s.deliverables if d.scene_id is not None],
+                "submitted_at": _hhmm(s.submitted_at),
+                "status": s.status.value,
+                "work_description": (s.work_description or "")[:150],
+            })
+
     return {
         "report_date": report_date.isoformat(),
         "generated_at": now.isoformat(timespec="seconds"),
@@ -211,6 +226,7 @@ def compute(db: Session, actor: User, report_date: date, *, project_id: int | No
         "artists": sorted(per.values(), key=lambda r: r["name"]),
         "incomplete_assignments": [slot_row(a, x) for a, x in incomplete],
         "delayed_assignments": [slot_row(a, x) for a, x in delayed],
+        "deliverable_links": deliverable_links,
         "remarks": remarks,
     }
 

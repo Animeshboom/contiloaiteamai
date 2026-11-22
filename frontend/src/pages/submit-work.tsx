@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
-import { FileUp, Link2, Plus, Send, X } from "lucide-react"
+import { FileUp, FolderOpen, Link2, Plus, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { EmptyState, LoadingRows, PageHeader } from "@/components/common"
@@ -165,19 +165,51 @@ export default function SubmitWorkPage() {
                 <Field label="Work description" htmlFor="sw-desc" hint="What you did, tools/models used, anything the reviewer should check.">
                   <Textarea id="sw-desc" required minLength={3} rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
                 </Field>
-                <Field label="Output / reference links" error={badLink ? `Not a valid http(s) link: ${badLink}` : undefined}>
+                <Field
+                  label="Deliverable Google Drive / Output Links"
+                  hint="Recommended: Paste your Google Drive Folder or Playblast video link (e.g. https://drive.google.com/…). Keeps production fast with zero file size limits."
+                  error={badLink ? `Not a valid http(s) link: ${badLink}` : undefined}
+                >
                   <div className="space-y-2">
-                    {links.map((l, i) => (
-                      <div key={i} className="flex gap-2">
-                        <div className="relative flex-1">
-                          <Link2 className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                          <Input className="pl-8" type="url" placeholder="https://drive.google.com/…" value={l} aria-label={`Link ${i + 1}`}
-                            onChange={(e) => setLinks(links.map((x, j) => (j === i ? e.target.value : x)))} />
+                    {links.map((l, i) => {
+                      const isDrive = l.toLowerCase().includes("drive.google.com")
+                      return (
+                        <div key={i} className="space-y-1">
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              {isDrive ? (
+                                <FolderOpen className="absolute left-2.5 top-2.5 size-4 text-blue-400" />
+                              ) : (
+                                <Link2 className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                              )}
+                              <Input
+                                className={cn("pl-8", isDrive && "border-blue-500/40 bg-blue-500/5")}
+                                type="url"
+                                placeholder="https://drive.google.com/…"
+                                value={l}
+                                aria-label={`Link ${i + 1}`}
+                                onChange={(e) => setLinks(links.map((x, j) => (j === i ? e.target.value : x)))}
+                              />
+                            </div>
+                            {links.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Remove link">
+                                <X />
+                              </Button>
+                            )}
+                          </div>
+                          {isDrive && (
+                            <div className="flex items-center gap-1.5 pl-1 text-[11px] text-blue-400 font-medium">
+                              <span>✓ Google Drive Playblast/Folder Deliverable detected</span>
+                            </div>
+                          )}
                         </div>
-                        {links.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Remove link"><X /></Button>}
-                      </div>
-                    ))}
-                    {links.length < 20 && <Button type="button" variant="ghost" size="sm" onClick={() => setLinks([...links, ""])}><Plus />Add link</Button>}
+                      )
+                    })}
+                    {links.length < 20 && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setLinks([...links, ""])}>
+                        <Plus />Add Google Drive link
+                      </Button>
+                    )}
                   </div>
                 </Field>
                 <Field label="Attachments (optional)" hint={`${ALLOWED.join(" ")} · up to ${config?.max_upload_mb ?? 25} MB each · max 10`}>

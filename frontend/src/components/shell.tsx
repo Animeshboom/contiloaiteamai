@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
+import { Link, Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
-  Bell, Building2, CalendarCheck, CalendarOff, FileText, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
+  Bell, Building2, CalendarCheck, CalendarOff, Clock, FileText, ChevronDown, ClipboardList, Clapperboard, Film, KeyRound, LayoutDashboard, LogOut, Menu,
   CalendarDays, History, Inbox, ListChecks, Megaphone, MessageSquare, ScrollText, MessageSquareText, Send, Settings, UserCircle2, Users, X,
 } from "lucide-react"
 
@@ -140,6 +140,15 @@ export function AppShell() {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
+  const [studioTime, setStudioTime] = useState(() => formatCurrentStudioTime())
+
+  useEffect(() => {
+    const t = setInterval(() => setStudioTime(formatCurrentStudioTime()), 5000)
+    return () => clearInterval(t)
+  }, [])
+
+  const isEodWindow = studioTime >= "18:40:00" && studioTime <= "19:15:00"
+
   if (!user) return null
   // The API refuses admin data until two-step login is set up (403 "mfa_required"): go there instead of broken pages.
   if (user.role === "admin" && mfaSetupRequired) return <Navigate to="/admin/two-step" replace />
@@ -201,6 +210,20 @@ export function AppShell() {
           </DropdownMenu>
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">
+          {isEodWindow && user.role === "team_lead" && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 shadow-sm animate-pulse">
+              <div className="flex items-center gap-2.5">
+                <Clock className="size-4 text-amber-400 shrink-0" />
+                <div>
+                  <span className="font-semibold text-amber-300">6:40 PM EOD Review Window Active:</span>{" "}
+                  Check today's scene submissions, review Google Drive deliverables, and submit your EOD report before 7:00 PM.
+                </div>
+              </div>
+              <Button asChild size="sm" className="bg-amber-600 hover:bg-amber-500 text-white font-medium h-7 px-3 text-xs">
+                <Link to="/lead/reports">Review &amp; Submit Report</Link>
+              </Button>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

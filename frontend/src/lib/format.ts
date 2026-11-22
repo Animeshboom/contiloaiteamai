@@ -58,6 +58,13 @@ export function formatMinutes(min: number | null | undefined): string {
   return `${h}h ${m.toString().padStart(2, "0")}m`
 }
 
+export function formatDuration(sec: number | null | undefined): string {
+  if (sec == null || isNaN(sec)) return "—"
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  return `${m}:${s.toString().padStart(2, "0")}`
+}
+
 /** "in 3h 20m" / "2h 05m overdue" relative to now. */
 export function relativeDeadline(iso: string): { text: string; overdue: boolean } {
   const diffMin = Math.round((new Date(iso).getTime() - Date.now()) / 60000)

@@ -1,13 +1,14 @@
 """Projects, episodes and scenes."""
+import re
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.core.timeutils import utcnow
-from app.models import Episode, Project, ProjectStatus, Scene, Team, User
+from app.models import Episode, Project, ProjectCharacter, ProjectStatus, Scene, Team, User
 from app.schemas.production import (
     EpisodeCreate, EpisodeOut, EpisodeUpdate, ProjectCreate, ProjectDetail, ProjectOut, ProjectUpdate,
-    SceneCreate, SceneOut, SceneUpdate,
+    SceneCreate, SceneOut, SceneUpdate, ScreenplayImportRequest, ParsedSceneItem,
 )
 from app.services import audit, scope
 
@@ -218,6 +219,137 @@ def delete_scene(db: Session, actor: User, scene_id: int, ip: str | None) -> Non
     sc.deleted_at = utcnow()
     audit.record(db, actor_id=actor.id, action="scene.delete", entity_type="scene", entity_id=sc.id, ip=ip)
     db.commit()
+
+
+_HEADER_RE = re.compile(
+    r"^\s*(\d+)\s*\|\s*([^|\n]+)\s*\|\s*(\d{1,2}:\d{2})\s*$",
+    re.MULTILINE
+)
+_FALLBACK_RE = re.compile(
+    r"^\s*(?:SCENE\s+)?(\d+)\s*[:.\-]\s*([^\n]+)",
+    re.MULTILINE | re.IGNORECASE
+)
+_CHAR_RE = re.compile(r"^\s*([A-Z]{3,20})", re.MULTILINE)
+_IGNORE_CUES = {
+    'CUT', 'EXT', 'INT', 'FADE', 'WIDE', 'BEAT', 'HALF', 'TITLE',
+    'INSERT', 'LOW', 'AUDIENCE', 'CONTINUOUS', 'AERIAL', 'WHIP', 'PAN',
+    'SOUND', 'EDIT', 'SHOT', 'ANGLE', 'POV', 'DISSOLVE'
+}
+
+
+def parse_screenplay_text(text: str) -> list[dict]:
+    matches = list(_HEADER_RE.finditer(text))
+    if not matches:
+        matches = list(_FALLBACK_RE.finditer(text))
+
+    if not matches:
+        return []
+
+    parsed = []
+    for i, m in enumerate(matches):
+        num = int(m.group(1))
+        title = m.group(2).strip()
+        dur_sec = None
+        if len(m.groups()) >= 3 and m.group(3):
+            parts = m.group(3).strip().split(":")
+            if len(parts) == 2:
+                try:
+                    dur_sec = float(int(parts[0]) * 60 + int(parts[1]))
+                except ValueError:
+                    dur_sec = None
+
+        start_idx = m.end()
+        end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start_idx:end_idx].strip()
+
+        chars = []
+        for line in body.splitlines():
+            cm = _CHAR_RE.match(line)
+            if cm:
+                name = cm.group(1).strip()
+                if name not in _IGNORE_CUES and name not in chars:
+                    chars.append(name)
+
+        parsed.append({
+            "scene_number": num,
+            "title": title,
+            "description": body,
+            "duration_sec": dur_sec,
+            "characters": chars,
+        })
+    return parsed
+
+
+def import_screenplay_scenes(db: Session, actor: User, episode_id: int, data: ScreenplayImportRequest,
+                            ip: str | None) -> list[SceneOut]:
+    ep = scope.get_episode_for_edit(db, actor, episode_id)
+    items = []
+    if data.scenes:
+        items = [s.model_dump() for s in data.scenes]
+    elif data.raw_text:
+        items = parse_screenplay_text(data.raw_text)
+
+    if not items:
+        raise ValidationFailed("No scenes could be parsed from the screenplay text")
+
+    existing_scenes = list(db.scalars(select(Scene).where(Scene.episode_id == ep.id)))
+    existing_map = {s.scene_number: s for s in existing_scenes}
+    imported_nums = {item["scene_number"] for item in items}
+
+    if data.replace_existing:
+        for s_num, s_obj in existing_map.items():
+            if s_num not in imported_nums and s_obj.deleted_at is None:
+                s_obj.deleted_at = utcnow()
+
+    created_or_updated = []
+    for item in items:
+        num = item["scene_number"]
+        ref_links = []
+        if item.get("drive_link"):
+            ref_links.append({"label": "Google Drive", "url": item["drive_link"]})
+
+        sc = existing_map.get(num)
+        if sc is not None:
+            sc.title = item.get("title") or sc.title or f"Scene {num:02d}"
+            sc.description = item.get("description")
+            sc.duration_sec = item.get("duration_sec")
+            if ref_links:
+                sc.reference_links = ref_links
+            sc.deleted_at = None
+        else:
+            sc = Scene(
+                episode_id=ep.id,
+                scene_number=num,
+                title=item.get("title") or f"Scene {num:02d}",
+                description=item.get("description"),
+                duration_sec=item.get("duration_sec"),
+                reference_links=ref_links,
+            )
+            db.add(sc)
+
+        if item.get("characters"):
+            for c_name in item["characters"]:
+                c_name = c_name.strip()
+                if not c_name:
+                    continue
+                pc = db.scalar(select(ProjectCharacter).where(
+                    ProjectCharacter.project_id == ep.project_id,
+                    ProjectCharacter.name == c_name
+                ))
+                if not pc:
+                    pc = ProjectCharacter(project_id=ep.project_id, name=c_name)
+                    db.add(pc)
+                    db.flush()
+                if pc not in sc.characters:
+                    sc.characters.append(pc)
+
+        created_or_updated.append(sc)
+
+    db.flush()
+    audit.record(db, actor_id=actor.id, action="scene.import_screenplay", entity_type="episode", entity_id=ep.id,
+                 after={"scenes_count": len(created_or_updated)}, ip=ip)
+    db.commit()
+    return [SceneOut.model_validate(s) for s in created_or_updated]
 
 
 def get_scene(db: Session, scene_id: int) -> Scene:

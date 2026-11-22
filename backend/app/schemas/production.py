@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models import ProjectStatus, ProjectType, WorkStatus
 
@@ -35,7 +35,9 @@ class ProjectUpdate(BaseModel):
 class SceneCreate(BaseModel):
     scene_number: int = Field(ge=1, le=9999)
     title: str | None = Field(default=None, max_length=200)
-    description: str | None = Field(default=None, max_length=5000)
+    description: str | None = Field(default=None, max_length=20000)
+    duration_sec: float | None = Field(default=None, ge=0)
+    reference_links: list[dict] = Field(default_factory=list)
 
 
 class SceneBulkCreate(BaseModel):
@@ -46,8 +48,10 @@ class SceneBulkCreate(BaseModel):
 class SceneUpdate(BaseModel):
     scene_number: int | None = Field(default=None, ge=1, le=9999)
     title: str | None = Field(default=None, max_length=200)
-    description: str | None = Field(default=None, max_length=5000)
+    description: str | None = Field(default=None, max_length=20000)
     status: WorkStatus | None = None
+    duration_sec: float | None = Field(default=None, ge=0)
+    reference_links: list[dict] | None = None
 
 
 class SceneOut(BaseModel):
@@ -59,6 +63,33 @@ class SceneOut(BaseModel):
     title: str | None
     description: str | None
     status: WorkStatus
+    duration_sec: float | None = None
+    reference_links: list[dict] = Field(default_factory=list)
+    characters: list[str] = Field(default_factory=list)
+
+    @field_validator("characters", mode="before")
+    @classmethod
+    def _char_names(cls, v):
+        if not v:
+            return []
+        if isinstance(v, list):
+            return [x.name if hasattr(x, "name") else str(x) for x in v]
+        return []
+
+
+class ParsedSceneItem(BaseModel):
+    scene_number: int
+    title: str | None = None
+    description: str | None = None
+    duration_sec: float | None = None
+    characters: list[str] = Field(default_factory=list)
+    drive_link: str | None = None
+
+
+class ScreenplayImportRequest(BaseModel):
+    raw_text: str | None = None
+    scenes: list[ParsedSceneItem] = Field(default_factory=list)
+    replace_existing: bool = False
 
 
 class EpisodeCreate(BaseModel):

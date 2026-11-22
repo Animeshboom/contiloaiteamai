@@ -7,7 +7,7 @@ from app.core.deps import client_ip, get_current_user, require_lead_or_admin
 from app.models import ProjectStatus, User
 from app.schemas.production import (
     EpisodeCreate, EpisodeOut, EpisodeUpdate, ProjectCreate, ProjectDetail, ProjectOut, ProjectUpdate, SceneBulkCreate,
-    SceneCreate, SceneOut, SceneUpdate,
+    SceneCreate, SceneOut, SceneUpdate, ScreenplayImportRequest, ParsedSceneItem,
 )
 from app.services import production_service as svc
 
@@ -72,6 +72,22 @@ def create_scene(episode_id: int, body: SceneCreate, request: Request, user: Use
 def bulk_create_scenes(episode_id: int, body: SceneBulkCreate, request: Request,
                        user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
     return svc.bulk_create_scenes(db, user, episode_id, body.count, client_ip(request))
+
+
+@router.post("/episodes/{episode_id}/scenes/screenplay-import", response_model=list[SceneOut], status_code=status.HTTP_201_CREATED)
+def import_screenplay(episode_id: int, body: ScreenplayImportRequest, request: Request,
+                      user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
+    """Parse and bulk import screenplay scenes directly into an episode."""
+    return svc.import_screenplay_scenes(db, user, episode_id, body, client_ip(request))
+
+
+@router.post("/screenplay/parse", response_model=list[ParsedSceneItem])
+def preview_screenplay_parse(body: ScreenplayImportRequest, user: User = Depends(require_lead_or_admin)):
+    """Preview parsed scenes, durations, and characters from raw screenplay text."""
+    if body.scenes:
+        return body.scenes
+    raw = body.raw_text or ""
+    return [ParsedSceneItem(**s) for s in svc.parse_screenplay_text(raw)]
 
 
 @router.patch("/scenes/{scene_id}", response_model=SceneOut)

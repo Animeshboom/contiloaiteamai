@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Download, ExternalLink, History, Paperclip, XCircle } from "lucide-react"
+import { CheckCircle2, Clock, Download, ExternalLink, FolderOpen, History, Paperclip, XCircle } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -98,15 +98,41 @@ export function SubmissionBody({ sub, showArtist = true, onOpenSubmission }: {
       {sub.comments && <Section title="Submitter comments"><p className="whitespace-pre-wrap text-sm text-muted-foreground">{sub.comments}</p></Section>}
 
       {sub.output_links.length > 0 && (
-        <Section title="Output links">
-          <ul className="space-y-1">
-            {sub.output_links.map((l) => (
-              <li key={l}>
-                <a href={l} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex max-w-full items-center gap-1.5 break-all text-sm text-info hover:underline">
-                  <ExternalLink className="size-3.5 shrink-0" />{l}
-                </a>
-              </li>
-            ))}
+        <Section title="Deliverable / Output links">
+          <ul className="space-y-1.5">
+            {sub.output_links.map((l) => {
+              const isDrive = l.toLowerCase().includes("drive.google.com")
+              return (
+                <li key={l} className="flex flex-wrap items-center gap-2">
+                  {isDrive ? (
+                    <a
+                      href={l}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-blue-500 transition-colors"
+                    >
+                      <FolderOpen className="size-3.5" />
+                      Open Google Drive Deliverable ↗
+                    </a>
+                  ) : (
+                    <a
+                      href={l}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      className="inline-flex max-w-full items-center gap-1.5 break-all text-sm text-info hover:underline"
+                    >
+                      <ExternalLink className="size-3.5 shrink-0" />
+                      {l}
+                    </a>
+                  )}
+                  {isDrive && (
+                    <span className="font-mono text-xs text-muted-foreground break-all truncate max-w-sm">
+                      {l}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </Section>
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, FileEdit, MailCheck, MessageSquareReply, Save, Send, Undo2 } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Compass, FileEdit, FolderOpen, MailCheck, MessageSquareReply, Save, Send, Undo2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { ErrorState, LoadingRows } from "@/components/common"
@@ -161,6 +161,51 @@ export default function ReportDetailPage() {
         </div>
       )}
 
+      {/* Today's Google Drive Deliverables & Playblasts */}
+      {r.metrics && (r.metrics as any).deliverable_links && (r.metrics as any).deliverable_links.length > 0 && (
+        <Card className="mb-6 overflow-hidden">
+          <CardHeader className="py-3 bg-muted/20 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="size-4 text-blue-400" />
+                <CardTitle className="text-sm font-semibold">Today's Google Drive Deliverables &amp; Playblasts</CardTitle>
+              </div>
+              <span className="text-xs text-muted-foreground font-mono">
+                {(r.metrics as any).deliverable_links.length} submission{(r.metrics as any).deliverable_links.length === 1 ? "" : "s"}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y text-xs">
+              {(r.metrics as any).deliverable_links.map((dl: any, idx: number) => (
+                <div key={idx} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-foreground">{dl.artist_name}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="font-mono text-primary font-medium">
+                      {dl.scenes?.join(", ") || "General"}
+                    </span>
+                    {dl.submitted_at && <span className="text-muted-foreground">at {dl.submitted_at}</span>}
+                    {dl.work_description && (
+                      <span className="text-muted-foreground truncate max-w-xs italic">— {dl.work_description}</span>
+                    )}
+                  </div>
+                  <a
+                    href={dl.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 font-semibold text-white shadow hover:bg-blue-500 transition-colors"
+                  >
+                    <FolderOpen className="size-3.5" />
+                    Open in Google Drive ↗
+                  </a>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_26rem]">
         <Card>
           <CardHeader>
@@ -215,15 +260,48 @@ export default function ReportDetailPage() {
             </Card>
           )}
           {isAdmin && (
-            <Card>
+            <Card className="border-primary/40 shadow-sm">
               <CardHeader>
-                <CardTitle>Reply</CardTitle>
-                <CardDescription>Your reply is shown on this report; the lead sees it too.</CardDescription>
+                <div className="flex items-center gap-2">
+                  <Compass className="size-4 text-primary" />
+                  <CardTitle className="text-base font-semibold">Executive Direction for Tomorrow</CardTitle>
+                </div>
+                <CardDescription>
+                  Your feedback and directions are shown on this report and directly prime the Team Lead's morning standup.
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3">
-                <Textarea aria-label="Reply to the lead" rows={3} maxLength={4000} value={comment} onChange={(e) => setComment(e.target.value)}
-                  placeholder="e.g. Thanks — I've asked IT to look at the render farm." />
-                <Button disabled={!comment.trim()} loading={reply.isPending} onClick={() => reply.mutate(undefined)}><MessageSquareReply />Save reply</Button>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => setComment((prev) => (prev ? prev + " " : "") + "[APPROVED] Approved scenes for comp. Focus team on the next sequence for tomorrow morning standup.")}
+                  >
+                    + Approved for Tomorrow
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => setComment((prev) => (prev ? prev + " " : "") + "[ACTION REQUIRED] Revisions requested on lighting and shot timing. Prioritize in tomorrow morning standup.")}
+                  >
+                    + Changes Required
+                  </Button>
+                </div>
+                <Textarea
+                  aria-label="Executive Feedback & Standup Direction"
+                  rows={4}
+                  maxLength={4000}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="e.g. Approved SC01-08 for final comp. In tomorrow's morning standup, prioritize Gurukul classroom background and lighting fixes on SC04."
+                />
+                <Button disabled={!comment.trim()} loading={reply.isPending} onClick={() => reply.mutate(undefined)}>
+                  <MessageSquareReply />Save Direction for Morning Standup
+                </Button>
               </CardContent>
             </Card>
           )}

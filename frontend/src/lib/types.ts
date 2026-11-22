@@ -52,6 +52,8 @@ export type WorkStatus = "not_started" | "in_progress" | "in_review" | "approved
 export interface Scene {
   id: number; episode_id: number; scene_number: number; label: string
   title: string | null; description: string | null; status: WorkStatus
+  duration_sec?: number | null; reference_links?: { label: string; url: string }[]
+  characters?: string[]
 }
 
 export interface Episode {

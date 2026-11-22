@@ -84,3 +84,53 @@ def test_update_project_status(client, as_admin):
     r = client.patch(f"/api/v1/projects/{pid}", headers=as_admin, json={"status": "on_hold"})
     assert r.json()["status"] == "on_hold"
     assert len(client.get("/api/v1/projects?status=on_hold", headers=as_admin).json()) == 1
+
+
+def test_import_chota_tenali_screenplay(client, as_admin):
+    pid = _project(client, as_admin, title="Chota Tenali").json()["id"]
+    ep = client.post(f"/api/v1/projects/{pid}/episodes", headers=as_admin,
+                     json={"episode_number": 1, "title": "Episode 1", "scene_count": 0}).json()
+
+    script = """
+01 | EXT. VILLAGE / MARKET — MORNING | 01:15
+AERIAL WIDE — सूरज की पहली किरणें हरे धान के खेतों पर...
+SABZIWALA (O.S.) पकड़ो! अरे पकड़ो! मेरी मिर्च लेकर भागा!
+RAMA मदद करेगा, या ऊपर बैठकर बस आँखों देखा हाल सुनाएगा?
+PACHCHI हाल सुनाऊँगा!
+KOTI लड्डू बच गया!
+
+02 | EXT. GURUKUL — MORNING | 01:30
+एक विशाल पेड़ के नीचे गुरुकुल...
+MALLANNA देर से आए हो! यहाँ मेरा नियम चलता है।
+GUNDU बिल्कुल, जुर्माना!
+BONDU बिल्कुल, पूरा जुर्माना!
+GURUJI पढ़ाई होगी या पंचायत यहीं लगाओगे?
+    """
+
+    # Preview parse
+    preview = client.post("/api/v1/screenplay/parse", headers=as_admin, json={"raw_text": script}).json()
+    assert len(preview) == 2
+    assert preview[0]["scene_number"] == 1
+    assert preview[0]["title"] == "EXT. VILLAGE / MARKET — MORNING"
+    assert preview[0]["duration_sec"] == 75.0
+    assert "RAMA" in preview[0]["characters"]
+    assert "SABZIWALA" in preview[0]["characters"]
+
+    assert preview[1]["scene_number"] == 2
+    assert preview[1]["duration_sec"] == 90.0
+    assert "MALLANNA" in preview[1]["characters"]
+
+    # Import into episode
+    imported = client.post(f"/api/v1/episodes/{ep['id']}/scenes/screenplay-import", headers=as_admin,
+                           json={"raw_text": script, "replace_existing": True}).json()
+    assert len(imported) == 2
+    assert imported[0]["duration_sec"] == 75.0
+    assert "RAMA" in imported[0]["characters"]
+    assert imported[1]["duration_sec"] == 90.0
+
+    # Re-importing with replace_existing=True updates without constraint conflicts
+    reimported = client.post(f"/api/v1/episodes/{ep['id']}/scenes/screenplay-import", headers=as_admin,
+                             json={"raw_text": script, "replace_existing": True}).json()
+    assert len(reimported) == 2
+    assert reimported[0]["id"] == imported[0]["id"]
+    assert "RAMA" in reimported[0]["characters"]
