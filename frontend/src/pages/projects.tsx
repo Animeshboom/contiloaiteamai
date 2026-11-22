@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Plus } from "lucide-react"
+import { FileUp, Plus } from "lucide-react"
 
 import { EmptyState, ErrorState, LoadingRows, PageHeader, ProjectStatusBadge } from "@/components/common"
+import { ScreenplayImportModal } from "@/components/episode-manager"
 import { ProjectFormDialog } from "@/components/project-form"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -19,14 +20,22 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const [status, setStatus] = useState<ProjectStatus | "">("")
   const [creating, setCreating] = useState(false)
+  const [importing, setImporting] = useState(false)
   const { data, isLoading, error, refetch } = useProjects({ status: status || undefined })
 
   return (
     <>
       <PageHeader
         title="Projects"
-        description="Films and series in production. Open a project to manage its episodes and scenes."
-        actions={<Button onClick={() => setCreating(true)}><Plus />New project</Button>}
+        description="Films and series in production. Open a project to manage its episodes, scenes, and scripts."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" className="gap-1.5" onClick={() => setImporting(true)}>
+              <FileUp className="size-4 text-primary" />Upload Script / Screenplay…
+            </Button>
+            <Button onClick={() => setCreating(true)}><Plus />New project</Button>
+          </div>
+        }
       />
       <div className="mb-4">
         <NativeSelect className="w-44" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus | "")} aria-label="Status filter">
@@ -35,8 +44,15 @@ export default function ProjectsPage() {
         </NativeSelect>
       </div>
       {error ? <ErrorState error={error} onRetry={refetch} /> : isLoading ? <LoadingRows /> : !data?.length ? (
-        <EmptyState title="No projects" description="Create your first production to start assigning work."
-          action={<Button size="sm" onClick={() => setCreating(true)}><Plus />New project</Button>} />
+        <EmptyState title="No projects" description="Create your first production or upload a shooting script to start assigning work."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImporting(true)}>
+                <FileUp className="size-3.5 text-primary" />Upload Script / Screenplay
+              </Button>
+              <Button size="sm" onClick={() => setCreating(true)}><Plus />New project</Button>
+            </div>
+          } />
       ) : (
         <Card className="p-1">
           <Table>
@@ -66,6 +82,7 @@ export default function ProjectsPage() {
         </Card>
       )}
       {creating && <ProjectFormDialog open onOpenChange={setCreating} onSaved={(p) => navigate(`${base}/projects/${p.id}`)} />}
+      {importing && <ScreenplayImportModal onClose={() => setImporting(false)} />}
     </>
   )
 }

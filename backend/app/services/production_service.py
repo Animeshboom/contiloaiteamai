@@ -357,3 +357,36 @@ def get_scene(db: Session, scene_id: int) -> Scene:
     if not sc or sc.deleted_at is not None:
         raise NotFound("Scene not found")
     return sc
+
+
+def extract_text_from_file(filename: str, content: bytes) -> str:
+    """Extract plain text from uploaded screenplay file (.docx, .txt, .fountain, .md)."""
+    import io, zipfile, xml.etree.ElementTree as ET
+    name_lower = (filename or "").lower()
+    if name_lower.endswith(".docx"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                xml_content = z.read("word/document.xml")
+            tree = ET.fromstring(xml_content)
+            paragraphs = []
+            for p in tree.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+                texts = [t.text for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if t.text]
+                if texts:
+                    paragraphs.append("".join(texts))
+            return "\n\n".join(paragraphs)
+        except Exception:
+            pass
+    return content.decode("utf-8", errors="replace")
+
+
+def import_screenplay_project(db: Session, actor: User, project_id: int, data: ScreenplayImportRequest,
+                              ip: str | None) -> list[SceneOut]:
+    p = scope.get_project_for_edit(db, actor, project_id)
+    episodes = _live_episodes(p)
+    if not episodes:
+        ep = Episode(project_id=p.id, episode_number=1, title="Episode 01")
+        db.add(ep)
+        db.flush()
+    else:
+        ep = episodes[0]
+    return import_screenplay_scenes(db, actor, ep.id, data, ip)

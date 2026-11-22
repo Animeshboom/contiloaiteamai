@@ -79,6 +79,7 @@ export default function App() {
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
+        <Route path="episodes" element={<EpisodesScenesPage />} />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="leave" element={<LeavePage />} />
         <Route path="announcements" element={<AnnouncementsPage />} />

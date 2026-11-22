@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
-import { ArrowLeft, ClipboardList, Lock, Pencil, Trash2 } from "lucide-react"
+import { ArrowLeft, ClipboardList, FileUp, Lock, Pencil, Trash2 } from "lucide-react"
 
 import { ErrorState, LoadingRows, PageHeader, ProjectStatusBadge } from "@/components/common"
-import { EpisodeManager } from "@/components/episode-manager"
+import { EpisodeManager, ScreenplayImportModal } from "@/components/episode-manager"
 import { ProjectFormDialog } from "@/components/project-form"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -21,6 +21,7 @@ function ProjectSummary({ project: p, base }: { project: ProjectDetail; base: st
   const { user } = useAuth()
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [importScript, setImportScript] = useState(false)
   const del = useAction(() => api.del(`/projects/${p.id}`), {
     success: "Project deleted", invalidate: [["projects"], ["dashboard"]], onSuccess: () => navigate(`${base}/projects`),
   })
@@ -37,7 +38,12 @@ function ProjectSummary({ project: p, base }: { project: ProjectDetail; base: st
             <h2 className="mt-1 text-lg font-semibold">{p.title}</h2>
             {p.description && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{p.description}</p>}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {p.can_manage && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setImportScript(true)}>
+                <FileUp className="size-3.5 text-primary" />Upload Script…
+              </Button>
+            )}
             {p.can_manage && user?.role === "team_lead" && (
               <Button variant="outline" size="sm" asChild><Link to={`/lead/assignments?new=1`}><ClipboardList />Assign work</Link></Button>
             )}
@@ -53,6 +59,7 @@ function ProjectSummary({ project: p, base }: { project: ProjectDetail; base: st
         </div>
       </Card>
       {editing && <ProjectFormDialog open project={p} onOpenChange={setEditing} />}
+      {importScript && <ScreenplayImportModal project={p} onClose={() => setImportScript(false)} />}
       <ConfirmDialog open={deleting} onOpenChange={setDeleting} destructive loading={del.isPending} confirmLabel="Delete project"
         title={`Delete ${p.title}?`} description="The project will be archived and hidden. Assignment history is preserved in the database."
         onConfirm={() => del.mutate(undefined)} />
@@ -85,6 +92,7 @@ export function EpisodesScenesPage() {
   const manageable = (projects.data ?? []).filter((p) => p.can_manage)
   const selectedId = Number(params.get("project")) || manageable[0]?.id
   const project = useProject(selectedId)
+  const [importScript, setImportScript] = useState(false)
 
   return (
     <>
@@ -92,11 +100,23 @@ export function EpisodesScenesPage() {
         title="Episodes & scenes"
         description="Break productions down into episodes and scenes for assignment."
         actions={manageable.length > 0 && (
-          <NativeSelect className="w-72" value={selectedId ?? ""} onChange={(e) => setParams({ project: e.target.value })} aria-label="Project">
-            {manageable.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.title}</option>)}
-          </NativeSelect>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setImportScript(true)}>
+              <FileUp className="size-3.5 text-primary" />Upload Script / Screenplay…
+            </Button>
+            <NativeSelect className="w-72" value={selectedId ?? ""} onChange={(e) => setParams({ project: e.target.value })} aria-label="Project">
+              {manageable.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.title}</option>)}
+            </NativeSelect>
+          </div>
         )}
       />
+      {importScript && (
+        <ScreenplayImportModal
+          project={project.data}
+          projectId={selectedId}
+          onClose={() => setImportScript(false)}
+        />
+      )}
       {projects.isLoading ? <LoadingRows /> : manageable.length === 0 ? (
         <EmptyState title="No projects you can manage" description="Create a project for your team first."
           action={<Button asChild size="sm"><Link to="/lead/projects">Go to projects</Link></Button>} />

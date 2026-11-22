@@ -134,3 +134,18 @@ GURUJI पढ़ाई होगी या पंचायत यहीं ल�
     assert len(reimported) == 2
     assert reimported[0]["id"] == imported[0]["id"]
     assert "RAMA" in reimported[0]["characters"]
+
+    # Test uploading a script file
+    res = client.post("/api/v1/screenplay/upload-file", headers=as_admin,
+                      files={"file": ("script.txt", script.encode("utf-8"), "text/plain")})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["scene_count"] == 2
+    assert len(data["scenes"]) == 2
+
+    # Test importing directly into a new project without episodes
+    pid2 = _project(client, as_admin, code="MOV-EP", title="Project Without Episodes").json()["id"]
+    p_imported = client.post(f"/api/v1/projects/{pid2}/screenplay-import", headers=as_admin,
+                             json={"raw_text": script}).json()
+    assert len(p_imported) == 2
+    assert p_imported[0]["duration_sec"] == 75.0

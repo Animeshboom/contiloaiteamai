@@ -1,5 +1,5 @@
 """Projects, episodes and scenes."""
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -79,6 +79,27 @@ def import_screenplay(episode_id: int, body: ScreenplayImportRequest, request: R
                       user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
     """Parse and bulk import screenplay scenes directly into an episode."""
     return svc.import_screenplay_scenes(db, user, episode_id, body, client_ip(request))
+
+
+@router.post("/projects/{project_id}/screenplay-import", response_model=list[SceneOut], status_code=status.HTTP_201_CREATED)
+def import_screenplay_project(project_id: int, body: ScreenplayImportRequest, request: Request,
+                              user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
+    """Parse and bulk import screenplay scenes directly into a project (auto-creates Episode 1 if needed)."""
+    return svc.import_screenplay_project(db, user, project_id, body, client_ip(request))
+
+
+@router.post("/screenplay/upload-file")
+async def upload_screenplay_file(file: UploadFile = File(...), user: User = Depends(require_lead_or_admin)):
+    """Upload a script file (.docx, .txt, .fountain, .md), extract text, and return parsed scenes."""
+    content = await file.read()
+    raw_text = svc.extract_text_from_file(file.filename or "", content)
+    parsed = svc.parse_screenplay_text(raw_text)
+    return {
+        "filename": file.filename,
+        "raw_text": raw_text,
+        "scenes": [ParsedSceneItem(**s) for s in parsed],
+        "scene_count": len(parsed),
+    }
 
 
 @router.post("/screenplay/parse", response_model=list[ParsedSceneItem])

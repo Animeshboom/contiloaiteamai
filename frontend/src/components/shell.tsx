@@ -28,6 +28,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: "/admin", label: "Overview", icon: <LayoutDashboard />, end: true },
     { to: "/admin/employees", label: "Employees", icon: <Users /> },
     { to: "/admin/projects", label: "Projects", icon: <Film /> },
+    { to: "/admin/episodes", label: "Episodes & Scenes", icon: <Clapperboard /> },
     { to: "/admin/teams", label: "Teams", icon: <Building2 /> },
     { to: "/admin/leave", label: "Leave", icon: <CalendarDays />, badge: "leave" },
     { to: "/admin/announcements", label: "Announcements", icon: <Megaphone /> },

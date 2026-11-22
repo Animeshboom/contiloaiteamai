@@ -1,8 +1,9 @@
 import { useState, useMemo, type FormEvent } from "react"
 import {
-  ChevronDown, ChevronRight, Clock, ExternalLink, Eye, FileText,
-  FolderOpen, Pencil, Plus, Sparkles, Trash2, Users, Video
+  ChevronDown, ChevronRight, Clock, ExternalLink, Eye, FileText, FileUp,
+  FolderOpen, Pencil, Plus, Sparkles, Trash2, Upload, Users, Video
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { EmptyState, WorkStatusBadge } from "@/components/common"
 import { Badge } from "@/components/ui/badge"
@@ -16,9 +17,9 @@ import { Checkbox, Field, Input, NativeSelect, Textarea } from "@/components/ui/
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api, errorMessage } from "@/lib/api"
 import { formatDuration, titleCase } from "@/lib/format"
-import { useAction } from "@/lib/queries"
+import { useAction, useProjects } from "@/lib/queries"
 import { CHOTA_TENALI_EPISODE_1_SCRIPT } from "@/lib/chota-tenali-sample"
-import type { Episode, ProjectDetail, Scene, WorkStatus } from "@/lib/types"
+import type { Episode, Project, ProjectDetail, Scene, WorkStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const WORK: WorkStatus[] = ["not_started", "in_progress", "in_review", "approved", "completed"]
@@ -32,6 +33,7 @@ export function EpisodeManager({ project }: { project: ProjectDetail }) {
   const [sceneDialog, setSceneDialog] = useState<{ episode: Episode; scene?: Scene } | null>(null)
   const [bulkFor, setBulkFor] = useState<Episode | null>(null)
   const [importFor, setImportFor] = useState<Episode | null>(null)
+  const [importForProject, setImportForProject] = useState(false)
   const [readerScene, setReaderScene] = useState<{ episode: Episode; scene: Scene } | null>(null)
   const [deleting, setDeleting] = useState<{ kind: "episode" | "scene"; id: number; label: string } | null>(null)
   const manage = project.can_manage
@@ -49,6 +51,9 @@ export function EpisodeManager({ project }: { project: ProjectDetail }) {
         </div>
         {manage && (
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setImportForProject(true)}>
+              <FileUp className="size-3.5 text-primary" />Upload Script / Screenplay…
+            </Button>
             <Button size="sm" onClick={() => setEpisodeDialog({})}><Plus />Add episode</Button>
           </div>
         )}
@@ -57,8 +62,17 @@ export function EpisodeManager({ project }: { project: ProjectDetail }) {
       {project.episodes.length === 0 ? (
         <EmptyState
           title="No episodes yet"
-          description={manage ? "Add an episode and import its shooting screenplay to generate the 22 scenes." : "This project has no episodes."}
-          action={manage && <Button size="sm" onClick={() => setEpisodeDialog({})}><Plus />Add episode</Button>}
+          description={manage ? "Upload your shooting screenplay (.docx, .txt) to automatically generate all 22 scenes, or add an episode manually." : "This project has no episodes."}
+          action={manage && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => setImportForProject(true)}>
+                <FileUp className="size-3.5" />Upload Script / Screenplay
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setEpisodeDialog({})}>
+                <Plus />Add episode
+              </Button>
+            </div>
+          )}
         />
       ) : project.episodes.map((ep) => {
         const totalSec = ep.scenes.reduce((acc, s) => acc + (s.duration_sec || 0), 0)
@@ -295,6 +309,7 @@ export function EpisodeManager({ project }: { project: ProjectDetail }) {
       {sceneDialog && <SceneDialog {...sceneDialog} onClose={() => setSceneDialog(null)} />}
       {bulkFor && <BulkScenesDialog episode={bulkFor} onClose={() => setBulkFor(null)} />}
       {importFor && <ScreenplayImportModal episode={importFor} onClose={() => setImportFor(null)} />}
+      {importForProject && <ScreenplayImportModal project={project} onClose={() => setImportForProject(false)} />}
       {readerScene && (
         <ScreenplayReaderModal
           episode={readerScene.episode}
@@ -483,11 +498,35 @@ interface ParsedScenePreview {
   characters: string[]
 }
 
-function ScreenplayImportModal({ episode, onClose }: { episode: Episode; onClose: () => void }) {
+export interface ScreenplayImportModalProps {
+  episode?: Episode | null
+  project?: ProjectDetail | Project | null
+  projectId?: number
+  onClose: () => void
+  onSuccess?: () => void
+}
+
+export function ScreenplayImportModal({
+  episode,
+  project,
+  projectId: explicitProjectId,
+  onClose,
+  onSuccess,
+}: ScreenplayImportModalProps) {
+  const projectsQuery = useProjects()
+  const availableProjects = useMemo(() => (projectsQuery.data ?? []).filter((p) => p.can_manage), [projectsQuery.data])
+
+  const initialProjectId = episode ? undefined : (project?.id ?? explicitProjectId ?? availableProjects[0]?.id)
+  const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(initialProjectId)
   const [scriptText, setScriptText] = useState("")
   const [replaceExisting, setReplaceExisting] = useState(true)
   const [parsed, setParsed] = useState<ParsedScenePreview[]>([])
   const [parsing, setParsing] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+
+  const activeProjectId = episode ? undefined : (project?.id ?? explicitProjectId ?? selectedProjectId ?? availableProjects[0]?.id)
 
   const parseAction = async (text: string) => {
     if (!text.trim()) {
@@ -505,20 +544,71 @@ function ScreenplayImportModal({ episode, onClose }: { episode: Episode; onClose
     }
   }
 
+  const handleProcessFile = async (file: File) => {
+    if (!file) return
+    setUploading(true)
+    setFileName(file.name)
+    try {
+      const res = await api.upload<{
+        filename: string
+        raw_text: string
+        scenes: ParsedScenePreview[]
+        scene_count: number
+      }>("/screenplay/upload-file", file)
+      setScriptText(res.raw_text)
+      setParsed(res.scenes)
+      toast.success(`Parsed ${res.scene_count} scenes from ${file.name}`)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleProcessFile(file)
+    e.target.value = ""
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragActive(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleProcessFile(file)
+  }
+
   const handleLoadSample = () => {
+    setFileName("Chota Tenali Ep 1 (Sample Script)")
     setScriptText(CHOTA_TENALI_EPISODE_1_SCRIPT)
     parseAction(CHOTA_TENALI_EPISODE_1_SCRIPT)
   }
 
   const importAction = useAction(
-    () => api.post(`/episodes/${episode.id}/scenes/screenplay-import`, {
-      raw_text: scriptText,
-      replace_existing: replaceExisting,
-    }),
+    () => {
+      if (episode?.id) {
+        return api.post(`/episodes/${episode.id}/scenes/screenplay-import`, {
+          raw_text: scriptText,
+          replace_existing: replaceExisting,
+        })
+      }
+      if (!activeProjectId) {
+        throw new Error("Please select a project to import scenes into.")
+      }
+      return api.post(`/projects/${activeProjectId}/screenplay-import`, {
+        raw_text: scriptText,
+        replace_existing: replaceExisting,
+      })
+    },
     {
-      success: `Imported ${parsed.length || "all"} scenes into EP${String(episode.episode_number).padStart(2, "0")}`,
+      success: episode
+        ? `Imported ${parsed.length || "all"} scenes into EP${String(episode.episode_number).padStart(2, "0")}`
+        : `Imported ${parsed.length || "all"} scenes into project!`,
       invalidate: INVALIDATE,
-      onSuccess: onClose,
+      onSuccess: () => {
+        onSuccess?.()
+        onClose()
+      },
     }
   )
 
@@ -532,45 +622,119 @@ function ScreenplayImportModal({ episode, onClose }: { episode: Episode; onClose
     return Array.from(set)
   }, [parsed])
 
+  const currentProjectObj = project ?? availableProjects.find((p) => p.id === activeProjectId)
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[92vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="size-5 text-primary" />
-            Import Screenplay into EP{String(episode.episode_number).padStart(2, "0")} — {episode.title}
+            <FileUp className="size-5 text-primary" />
+            {episode
+              ? `Import Screenplay into EP${String(episode.episode_number).padStart(2, "0")} — ${episode.title}`
+              : currentProjectObj
+                ? `Upload & Import Script — ${currentProjectObj.title} (${currentProjectObj.code})`
+                : "Upload & Import Screenplay Script"}
           </DialogTitle>
           <DialogDescription>
-            Paste shooting screenplay text. StudioTrack AI automatically breaks down scene numbers,
-            durations (`mm:ss`), Hindi action &amp; dialogue, characters, and `[AI / CONTINUITY]` notes.
+            Upload a shooting script document (.docx, .txt, .fountain, .md) or paste script text.
+            StudioTrack AI automatically extracts all 22 scenes, durations (`mm:ss`), characters, dialogues, and continuity notes.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-medium text-foreground">Screenplay Shooting Script</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
-              onClick={handleLoadSample}
+          {/* Target project selector if not pre-bound */}
+          {!episode && !project && !explicitProjectId && (
+            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+              <label htmlFor="target-proj-select" className="text-xs font-semibold text-foreground">Target Project</label>
+              <NativeSelect
+                id="target-proj-select"
+                value={activeProjectId ?? ""}
+                onChange={(e) => setSelectedProjectId(Number(e.target.value))}
+                className="w-full"
+              >
+                {availableProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.title}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="text-[11px] text-muted-foreground">
+                Scenes will be imported into Episode 01 of the selected project (auto-creates Episode 01 if needed).
+              </p>
+            </div>
+          )}
+
+          {/* Drag & Drop File Upload Area */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={handleDrop}
+            className={cn(
+              "relative rounded-xl border-2 border-dashed p-6 text-center transition-all cursor-pointer",
+              dragActive ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/30",
+              uploading ? "opacity-60 pointer-events-none" : ""
+            )}
+          >
+            <input
+              id="screenplay-file-upload"
+              type="file"
+              accept=".docx,.txt,.fountain,.md"
+              className="sr-only"
+              onChange={handleFileInputChange}
+              disabled={uploading}
+            />
+            <label
+              htmlFor="screenplay-file-upload"
+              className="flex flex-col items-center justify-center gap-2 cursor-pointer"
             >
-              <Sparkles className="size-3.5" />
-              Load Chota Tenali Ep 1 (22 Scenes)
-            </Button>
+              <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary shadow-inner">
+                <FileUp className="size-6" />
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-primary hover:underline">
+                  {uploading ? "Extracting & Parsing Script…" : "Choose Script Document (.docx, .txt, .fountain, .md)"}
+                </span>
+                <span className="text-xs text-muted-foreground block sm:inline"> or drag &amp; drop file here</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Full native parsing for Word Document (.docx), Plain Text (.txt), Fountain (.fountain), and Markdown (.md)
+              </p>
+              {fileName && (
+                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 font-mono text-xs font-semibold text-emerald-400">
+                  ✓ File loaded: {fileName}
+                </span>
+              )}
+            </label>
           </div>
 
-          <Textarea
-            rows={8}
-            className="font-mono text-xs leading-relaxed"
-            placeholder="01 | EXT. VILLAGE / MARKET — MORNING | 01:15&#10;AERIAL WIDE — सूरज की पहली किरणें...&#10;RAMA: मदद करेगा?&#10;PACHCHI: हाल सुनाऊँगा!..."
-            value={scriptText}
-            onChange={(e) => {
-              setScriptText(e.target.value)
-              parseAction(e.target.value)
-            }}
-          />
+          {/* Script Textarea & Sample Action */}
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium text-foreground">Or paste &amp; review screenplay text:</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
+                onClick={handleLoadSample}
+              >
+                <Sparkles className="size-3.5" />
+                Load Chota Tenali Ep 1 (22 Scenes)
+              </Button>
+            </div>
+
+            <Textarea
+              rows={7}
+              className="font-mono text-xs leading-relaxed"
+              placeholder="01 | EXT. VILLAGE / MARKET — MORNING | 01:15&#10;AERIAL WIDE — सूरज की पहली किरणें...&#10;RAMA: मदद करेगा?&#10;PACHCHI: हाल सुनाऊँगा!..."
+              value={scriptText}
+              onChange={(e) => {
+                setScriptText(e.target.value)
+                parseAction(e.target.value)
+              }}
+            />
+          </div>
 
           {/* Breakdown Summary Preview */}
           {parsing ? (
@@ -619,7 +783,7 @@ function ScreenplayImportModal({ episode, onClose }: { episode: Episode; onClose
               onCheckedChange={(c) => setReplaceExisting(!!c)}
             />
             <label htmlFor="rep-scenes" className="text-xs text-foreground cursor-pointer">
-              Replace existing scenes in this episode (safely preserves assignment histories)
+              Replace existing scenes in this episode (safely preserves assignment histories and Google Drive links)
             </label>
           </div>
         </div>
@@ -627,7 +791,7 @@ function ScreenplayImportModal({ episode, onClose }: { episode: Episode; onClose
         <DialogFooter className="pt-3 border-t">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
-            disabled={parsed.length === 0}
+            disabled={parsed.length === 0 || uploading || (!episode && !activeProjectId)}
             loading={importAction.isPending}
             onClick={() => importAction.mutate(undefined)}
           >
