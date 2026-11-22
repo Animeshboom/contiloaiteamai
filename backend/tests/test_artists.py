@@ -115,6 +115,30 @@ def test_lead_leave_is_decided_by_admin(client, as_admin, db):
                        json={"decision": "approved"}).json()["status"] == "approved"
 
 
+def test_leave_types_half_day_and_cancel_approved(client, as_lead, db):
+    artist_h = login(client, ARTIST)
+    d = studio_today() + timedelta(days=5)
+    r = client.post(f"{API}/me/leave", headers=artist_h, json={
+        "start": str(d), "end": str(d), "reason": "Dentist appointment",
+        "leave_type": "sick", "half_day": "first_half"
+    })
+    assert r.status_code == 201, r.text
+    lv = r.json()
+    assert lv["leave_type"] == "sick"
+    assert lv["half_day"] == "first_half"
+    assert lv["days"] == 0.5
+    assert lv["reason"] == "Dentist appointment"
+
+    # Lead approves
+    appr = client.post(f"{API}/leave/{lv['id']}/decide", headers=as_lead, json={"decision": "approved"}).json()
+    assert appr["status"] == "approved"
+
+    # Artist can cancel future approved leave
+    c_res = client.post(f"{API}/me/leave/{lv['id']}/cancel", headers=artist_h)
+    assert c_res.status_code == 200, c_res.text
+    assert c_res.json()["status"] == "cancelled"
+
+
 # ---------------- announcements and holidays by team ----------------
 
 def test_team_announcements(client, as_admin, as_lead, db):

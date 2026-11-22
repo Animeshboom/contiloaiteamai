@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/misc"
 import { errorMessage } from "@/lib/api"
 import { titleCase } from "@/lib/format"
-import type { AssignmentStatus, AttendanceStatus, LeaveStatus, Priority, ProjectStatus, WorkStatus } from "@/lib/types"
+import type { AssignmentStatus, AttendanceStatus, HalfDayType, LeaveStatus, LeaveType, Priority, ProjectStatus, WorkStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
@@ -96,6 +96,27 @@ export function AttendanceBadge({ status }: { status: AttendanceStatus | "not_ch
 const LEAVE_TONE: Record<LeaveStatus, Tone> = { pending: "yellow", approved: "green", rejected: "red", cancelled: "neutral" }
 export function LeaveStatusBadge({ status }: { status: LeaveStatus }) {
   return <Badge tone={LEAVE_TONE[status] ?? "neutral"}>{titleCase(status)}</Badge>
+}
+
+const LEAVE_TYPE_META: Record<LeaveType, { label: string; tone: Tone }> = {
+  casual: { label: "Casual (CL)", tone: "blue" },
+  sick: { label: "Sick (SL)", tone: "amber" },
+  privilege: { label: "Vacation (PL)", tone: "green" },
+  unpaid: { label: "Unpaid (LOP)", tone: "red" },
+}
+
+export function LeaveTypeBadge({ type, halfDay }: { type?: LeaveType; halfDay?: HalfDayType | null }) {
+  const meta = LEAVE_TYPE_META[type ?? "casual"] ?? LEAVE_TYPE_META.casual
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Badge tone={meta.tone}>{meta.label}</Badge>
+      {halfDay && (
+        <Badge tone="neutral" className="text-[10px]">
+          {halfDay === "first_half" ? "1st Half" : "2nd Half"}
+        </Badge>
+      )}
+    </span>
+  )
 }
 
 const PRIORITY_TONE: Record<Priority, Tone> = { low: "neutral", medium: "blue", high: "amber", urgent: "red" }

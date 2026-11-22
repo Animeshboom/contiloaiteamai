@@ -263,11 +263,30 @@ export interface ImportResult { created: Credentials[]; errors: { row: number; m
 export interface Holiday { id: number; date: string; name: string; applies_to_all: boolean; teams: TeamRef[] }
 
 export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled"
+export type LeaveType = "casual" | "sick" | "privilege" | "unpaid"
+export type HalfDayType = "first_half" | "second_half"
 
 export interface Leave {
-  id: number; user_id: number; person: string; team_id: number | null; team_name: string | null
-  start: string; end: string; days: number; reason: string; status: LeaveStatus
-  decided_by: string | null; decided_at: string | null; decision_note: string | null; created_at: string
+  id: number
+  user_id: number
+  person: string
+  team_id: number | null
+  team_name: string | null
+  start: string
+  end: string
+  days: number
+  reason: string
+  leave_type?: LeaveType
+  half_day?: HalfDayType | null
+  active_tasks_count?: number
+  team_overlap_count?: number
+  days_taken_year?: number
+  days_taken_month?: number
+  status: LeaveStatus
+  decided_by: string | null
+  decided_at: string | null
+  decision_note: string | null
+  created_at: string
 }
 
 export interface Announcement {

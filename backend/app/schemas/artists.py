@@ -49,6 +49,8 @@ class LeaveCreate(BaseModel):
     start: date
     end: date
     reason: str = Field(min_length=3, max_length=1000)
+    leave_type: str = Field(default="casual", pattern="^(casual|sick|privilege|unpaid)$")
+    half_day: str | None = Field(default=None, pattern="^(first_half|second_half)$")
 
 
 class LeaveDecision(BaseModel):
@@ -64,8 +66,14 @@ class LeaveOut(BaseModel):
     team_name: str | None
     start: date
     end: date
-    days: int
+    days: float
     reason: str
+    leave_type: str = "casual"
+    half_day: str | None = None
+    active_tasks_count: int = 0
+    team_overlap_count: int = 0
+    days_taken_year: float = 0.0
+    days_taken_month: float = 0.0
     status: str  # pending | approved | rejected | cancelled
     decided_by: str | None
     decided_at: datetime | None

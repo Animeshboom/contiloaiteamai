@@ -12,3 +12,4 @@ if str(ROOT) not in sys.path:
 from gmail_mcp.server import mcp  # noqa: E402
 
 app = mcp.streamable_http_app()
+

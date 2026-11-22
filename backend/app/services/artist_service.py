@@ -159,17 +159,105 @@ def reset_password(db: Session, actor: User, user_id: int, ip: str | None) -> Cr
 
 # ---------------- leave requests ----------------
 
+import re
+
+_LEAVE_REASON_RE = re.compile(
+    r"^\[(Casual|Sick|Privilege|Unpaid)(?:\s+Leave)?(?:\s*-\s*(First Half|Second Half))?\]\s*(.*)$",
+    re.IGNORECASE
+)
+
+def _parse_leave_reason(raw: str) -> tuple[str, str | None, str]:
+    m = _LEAVE_REASON_RE.match(raw or "")
+    if m:
+        t_raw = m.group(1).lower()
+        t = "casual" if "cas" in t_raw else "sick" if "sic" in t_raw else "privilege" if "priv" in t_raw else "unpaid"
+        h_raw = (m.group(2) or "").lower()
+        h = "first_half" if "first" in h_raw else "second_half" if "second" in h_raw else None
+        clean = (m.group(3) or "").strip()
+        return t, h, clean or raw
+    return "casual", None, raw or ""
+
+
 def _span(start: date, end: date) -> str:
     return f"{start:%d %b}" if start == end else f"{start:%d %b} – {end:%d %b}"
 
 
-def _leave_out(lr: LeaveRequest) -> LeaveOut:
+def _leave_out(lr: LeaveRequest, db: Session | None = None) -> LeaveOut:
     u = lr.user
-    return LeaveOut(id=lr.id, user_id=u.id, person=u.full_name, team_id=u.team_id,
-                    team_name=u.team.name if u.team else None, start=lr.start_day, end=lr.end_day,
-                    days=(lr.end_day - lr.start_day).days + 1, reason=lr.reason, status=lr.status.value,
-                    decided_by=lr.decided_by.full_name if lr.decided_by else None, decided_at=lr.decided_at,
-                    decision_note=lr.decision_note, created_at=lr.created_at)
+    leave_type, half_day, clean_reason = _parse_leave_reason(lr.reason)
+    days_count = 0.5 if half_day else float((lr.end_day - lr.start_day).days + 1)
+
+    active_tasks = 0
+    team_overlap = 0
+    days_year = 0.0
+    days_month = 0.0
+
+    if db is not None:
+        try:
+            from app.models.work import Assignment, AssignmentAssignee, AssignmentStatus
+            active_tasks = db.scalar(
+                select(func.count(AssignmentAssignee.id))
+                .join(Assignment, Assignment.id == AssignmentAssignee.assignment_id)
+                .where(
+                    AssignmentAssignee.user_id == u.id,
+                    AssignmentAssignee.status.in_([AssignmentStatus.ASSIGNED, AssignmentStatus.IN_PROGRESS]),
+                    cast(Assignment.deadline, Date) >= lr.start_day,
+                    cast(Assignment.deadline, Date) <= lr.end_day,
+                    Assignment.deleted_at.is_(None)
+                )
+            ) or 0
+        except Exception:
+            active_tasks = 0
+
+        try:
+            if u.team_id:
+                team_overlap = db.scalar(
+                    select(func.count(LeaveRequest.id))
+                    .join(User, User.id == LeaveRequest.user_id)
+                    .where(
+                        User.team_id == u.team_id,
+                        LeaveRequest.user_id != u.id,
+                        LeaveRequest.status == LeaveStatus.APPROVED,
+                        LeaveRequest.start_day <= lr.end_day,
+                        LeaveRequest.end_day >= lr.start_day,
+                        User.deleted_at.is_(None)
+                    )
+                ) or 0
+        except Exception:
+            team_overlap = 0
+
+        try:
+            from app.core.timeutils import studio_today
+            today = studio_today()
+            cur_year = today.year
+            cur_month = today.month
+
+            approved_leaves = list(db.scalars(
+                select(LeaveRequest).where(
+                    LeaveRequest.user_id == u.id,
+                    LeaveRequest.status == LeaveStatus.APPROVED,
+                    LeaveRequest.start_day >= date(cur_year, 1, 1),
+                    LeaveRequest.start_day <= date(cur_year, 12, 31)
+                )
+            ))
+            for al in approved_leaves:
+                _, a_half, _ = _parse_leave_reason(al.reason)
+                d = 0.5 if a_half else float((al.end_day - al.start_day).days + 1)
+                days_year += d
+                if al.start_day.month == cur_month:
+                    days_month += d
+        except Exception:
+            days_year, days_month = 0.0, 0.0
+
+    return LeaveOut(
+        id=lr.id, user_id=u.id, person=u.full_name, team_id=u.team_id,
+        team_name=u.team.name if u.team else None, start=lr.start_day, end=lr.end_day,
+        days=days_count, reason=clean_reason, leave_type=leave_type, half_day=half_day,
+        active_tasks_count=active_tasks, team_overlap_count=team_overlap,
+        days_taken_year=days_year, days_taken_month=days_month,
+        status=lr.status.value, decided_by=lr.decided_by.full_name if lr.decided_by else None,
+        decided_at=lr.decided_at, decision_note=lr.decision_note, created_at=lr.created_at
+    )
 
 
 def leave_days(db: Session, user_ids: list[int], start: date, end: date) -> dict[int, set[date]]:
@@ -190,15 +278,31 @@ def request_leave(db: Session, user: User, data: LeaveCreate, ip: str | None) ->
         raise ValidationFailed("The end date must be on or after the start date")
     if (data.end - data.start).days + 1 > MAX_LEAVE_DAYS:
         raise ValidationFailed("A leave request can cover at most one year")
+    if data.half_day and data.start != data.end:
+        raise ValidationFailed("A half-day leave can only be for a single date")
     if db.scalar(select(LeaveRequest.id).where(
             LeaveRequest.user_id == user.id, LeaveRequest.status.in_([LeaveStatus.PENDING, LeaveStatus.APPROVED]),
             LeaveRequest.start_day <= data.end, LeaveRequest.end_day >= data.start)):
         raise Conflict("You already have a leave request covering some of these days")
-    lr = LeaveRequest(user_id=user.id, start_day=data.start, end_day=data.end, reason=data.reason.strip())
+
+    type_label = {
+        "casual": "Casual Leave",
+        "sick": "Sick Leave",
+        "privilege": "Privilege Leave",
+        "unpaid": "Unpaid Leave",
+    }.get(data.leave_type, "Casual Leave")
+
+    half_label = f" - {'First Half' if data.half_day == 'first_half' else 'Second Half'}" if data.half_day else ""
+    tag = f"[{type_label}{half_label}]"
+
+    clean_reason = data.reason.strip()
+    stored_reason = clean_reason if clean_reason.startswith("[") else f"{tag} {clean_reason}"
+
+    lr = LeaveRequest(user_id=user.id, start_day=data.start, end_day=data.end, reason=stored_reason)
     db.add(lr)
     db.flush()
     audit.record(db, actor_id=user.id, action="leave.request", entity_type="leave_request", entity_id=lr.id,
-                 after={"start": data.start, "end": data.end}, ip=ip)
+                 after={"start": data.start, "end": data.end, "leave_type": data.leave_type, "half_day": data.half_day}, ip=ip)
     # Artists' requests go to their team lead; a lead's own request (or a team without a lead) to the admins.
     lead = user.team.lead if user.team else None
     if user.role_name == RoleName.ARTIST and lead and lead.is_active and lead.id != user.id:
@@ -214,11 +318,11 @@ def request_leave(db: Session, user: User, data: LeaveCreate, ip: str | None) ->
             entity_type="leave_request", entity_id=lr.id, dedupe_key=f"leave:{lr.id}:requested:{approver}")
     db.commit()
     db.refresh(lr)
-    return _leave_out(lr)
+    return _leave_out(lr, db)
 
 
 def my_leave(db: Session, user: User) -> list[LeaveOut]:
-    return [_leave_out(lr) for lr in db.scalars(select(LeaveRequest).where(LeaveRequest.user_id == user.id)
+    return [_leave_out(lr, db) for lr in db.scalars(select(LeaveRequest).where(LeaveRequest.user_id == user.id)
                                                  .order_by(LeaveRequest.start_day.desc(), LeaveRequest.id.desc()))]
 
 
@@ -226,12 +330,33 @@ def cancel_leave(db: Session, user: User, leave_id: int, ip: str | None) -> Leav
     lr = db.get(LeaveRequest, leave_id)
     if not lr or lr.user_id != user.id:
         raise NotFound("Leave request not found")
-    if lr.status != LeaveStatus.PENDING:
-        raise Conflict("Only a pending request can be cancelled")
+    if lr.status not in (LeaveStatus.PENDING, LeaveStatus.APPROVED):
+        raise Conflict("Only pending or approved requests can be cancelled")
+    from app.core.timeutils import studio_today
+    today = studio_today()
+    if lr.status == LeaveStatus.APPROVED and lr.end_day < today:
+        raise Conflict("Past leave cannot be cancelled")
+
+    prev_status = lr.status
     lr.status = LeaveStatus.CANCELLED
-    audit.record(db, actor_id=user.id, action="leave.cancel", entity_type="leave_request", entity_id=lr.id, ip=ip)
+    audit.record(db, actor_id=user.id, action="leave.cancel", entity_type="leave_request", entity_id=lr.id,
+                 after={"previous_status": prev_status.value}, ip=ip)
+
+    if prev_status == LeaveStatus.APPROVED:
+        lead = user.team.lead if user.team else None
+        approvers = [lead.id] if (user.role_name == RoleName.ARTIST and lead and lead.is_active and lead.id != user.id) else list(
+            db.scalars(select(User.id).join(Role).where(Role.name == RoleName.ADMIN, User.is_active.is_(True), User.deleted_at.is_(None)))
+        )
+        for approver in approvers:
+            notification_service.notify(
+                db, user_id=approver, event_type="leave_cancelled",
+                title=f"Leave cancelled by {user.full_name}",
+                message=f"{user.full_name} cancelled approved leave for {_span(lr.start_day, lr.end_day)}.",
+                link="/lead/leave" if user.role_name == RoleName.ARTIST else "/admin/leave",
+                entity_type="leave_request", entity_id=lr.id, dedupe_key=f"leave:{lr.id}:cancelled:{approver}")
+
     db.commit()
-    return _leave_out(lr)
+    return _leave_out(lr, db)
 
 
 def list_leave(db: Session, actor: User, *, status: LeaveStatus | None = None,
@@ -245,7 +370,7 @@ def list_leave(db: Session, actor: User, *, status: LeaveStatus | None = None,
     if status:
         q = q.where(LeaveRequest.status == status)
     q = q.order_by(LeaveRequest.created_at.asc() if status == LeaveStatus.PENDING else LeaveRequest.start_day.desc())
-    return [_leave_out(lr) for lr in db.scalars(q.limit(500))]
+    return [_leave_out(lr, db) for lr in db.scalars(q.limit(500))]
 
 
 def decide_leave(db: Session, actor: User, leave_id: int, data: LeaveDecision, ip: str | None) -> LeaveOut:
@@ -274,4 +399,4 @@ def decide_leave(db: Session, actor: User, leave_id: int, data: LeaveDecision, i
         entity_type="leave_request", entity_id=lr.id, dedupe_key=f"leave:{lr.id}:{data.decision}")
     db.commit()
     db.refresh(lr)
-    return _leave_out(lr)
+    return _leave_out(lr, db)
