@@ -1,7 +1,7 @@
 import { useState, useMemo, type FormEvent } from "react"
 import {
-  ChevronDown, ChevronRight, Clock, ExternalLink, Eye, FileText, FileUp,
-  FolderOpen, Pencil, Plus, Sparkles, Trash2, Upload, Users, Video
+  ChevronDown, ChevronRight, Clock, Eye, FileText, FileUp,
+  FolderOpen, Pencil, Plus, Sparkles, Trash2
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -880,7 +880,7 @@ function ScreenplayReaderModal({
               }
 
               // Check for dialogue speaker (e.g. "RAMA", "RAMA (O.S.)", "PACHCHI")
-              const speakerMatch = line.match(/^([A-Z\s]{2,20}(?:\([^)]+\))?)\s*[:—\-]?\s*(.*)$/)
+              const speakerMatch = line.match(/^([A-Z\s]{2,20}(?:\([^)]+\))?)\s*[:—-]?\s*(.*)$/)
               if (speakerMatch && speakerMatch[1].length < 25 && !speakerMatch[1].includes("EXT.") && !speakerMatch[1].includes("INT.")) {
                 return (
                   <div key={idx} className="my-2 pl-4 border-l-2 border-primary/50">

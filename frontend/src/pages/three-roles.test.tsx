@@ -91,9 +91,9 @@ describe("three roles: admin, team lead, artist", () => {
     render(wrap(<LeavePage />))
 
     await userEvent.click(await screen.findByRole("button", { name: "Reject leave for Asha Rao" }))
-    const reject = screen.getByRole("button", { name: "Reject" })
+    const reject = screen.getByRole("button", { name: "Reject request" })
     expect(reject).toBeDisabled()
-    await userEvent.type(screen.getByLabelText("Note for them"), "Delivery week")
+    await userEvent.type(screen.getByLabelText("Reason for rejection (required)"), "Delivery week")
     await userEvent.click(reject)
     await waitFor(() => expect(sent(fetchMock, "/api/v1/leave/9/decide")).toBe(true))
     expect(bodyOf(fetchMock, "/api/v1/leave/9/decide")).toEqual({ decision: "rejected", note: "Delivery week" })
@@ -111,7 +111,7 @@ describe("three roles: admin, team lead, artist", () => {
     await userEvent.type(screen.getByLabelText("Reason"), "Family function")
     await userEvent.click(screen.getByRole("button", { name: "Send request" }))
     await waitFor(() => expect(sent(fetchMock, "/api/v1/me/leave")).toBe(true))
-    expect(bodyOf(fetchMock, "/api/v1/me/leave")).toEqual({ start: "2026-11-20", end: "2026-11-20", reason: "Family function" })
+    expect(bodyOf(fetchMock, "/api/v1/me/leave")).toEqual({ start: "2026-11-20", end: "2026-11-20", reason: "Family function", leave_type: "casual" })
   })
 
   it("check-out sends the optional end-of-day note", async () => {
@@ -195,8 +195,8 @@ describe("three roles: admin, team lead, artist", () => {
       expect(await screen.findByText("Issues / remarks from the lead")).toBeInTheDocument()
       expect(screen.getByText(/Sent to admin .* by Priya Raman/)).toBeInTheDocument()
       expect(screen.queryByRole("button", { name: "Send to admin" })).not.toBeInTheDocument()
-      await userEvent.type(screen.getByLabelText("Reply to the lead"), "IT is on it")
-      await userEvent.click(screen.getByRole("button", { name: /Save reply/ }))
+      await userEvent.type(screen.getByLabelText("Executive Feedback & Standup Direction"), "IT is on it")
+      await userEvent.click(screen.getByRole("button", { name: /Save Direction/ }))
       await waitFor(() => expect(sent(fetchMock, "/api/v1/reports/9/comment")).toBe(true))
       expect(bodyOf(fetchMock, "/api/v1/reports/9/comment")).toEqual({ comment: "IT is on it" })
     })

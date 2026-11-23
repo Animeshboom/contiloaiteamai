@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from "react"
-import { AlertTriangle, CalendarDays, CalendarPlus, Check, Clock, Users, X } from "lucide-react"
+import { AlertTriangle, CalendarDays, CalendarPlus, Check, Users, X } from "lucide-react"
 
 import { EmptyState, ErrorState, LeaveStatusBadge, LeaveTypeBadge, LoadingRows, PageHeader } from "@/components/common"
 import { MyLeaveCard, RequestLeaveDialog } from "@/components/my-leave"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"

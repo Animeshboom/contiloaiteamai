@@ -74,6 +74,9 @@ export default function ReportDetailPage() {
 
   if (error) return <ErrorState error={error} onRetry={refetch} />
   if (isLoading || !r) return <LoadingRows />
+  // Google Drive deliverable links collected into the report snapshot (optional field).
+  type DeliverableLink = { artist_name?: string; scenes?: string[]; submitted_at?: string; url: string; work_description?: string }
+  const deliverableLinks = ((r.metrics as { deliverable_links?: DeliverableLink[] } | null)?.deliverable_links) ?? []
 
   const isDraft = r.status === "draft"
   const isAdmin = user?.role === "admin"
@@ -162,7 +165,7 @@ export default function ReportDetailPage() {
       )}
 
       {/* Today's Google Drive Deliverables & Playblasts */}
-      {r.metrics && (r.metrics as any).deliverable_links && (r.metrics as any).deliverable_links.length > 0 && (
+      {deliverableLinks.length > 0 && (
         <Card className="mb-6 overflow-hidden">
           <CardHeader className="py-3 bg-muted/20 border-b">
             <div className="flex items-center justify-between">
@@ -171,13 +174,13 @@ export default function ReportDetailPage() {
                 <CardTitle className="text-sm font-semibold">Today's Google Drive Deliverables &amp; Playblasts</CardTitle>
               </div>
               <span className="text-xs text-muted-foreground font-mono">
-                {(r.metrics as any).deliverable_links.length} submission{(r.metrics as any).deliverable_links.length === 1 ? "" : "s"}
+                {deliverableLinks.length} submission{deliverableLinks.length === 1 ? "" : "s"}
               </span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y text-xs">
-              {(r.metrics as any).deliverable_links.map((dl: any, idx: number) => (
+              {deliverableLinks.map((dl, idx) => (
                 <div key={idx} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-foreground">{dl.artist_name}</span>
