@@ -251,8 +251,16 @@ export interface TeamReportStatus {
   lead_id: number; lead: string; teams: string[]; report_id: number | null; submitted_at: string | null; issues: string | null
 }
 
+export interface LeadInput {
+  blockers?: string | null
+  tomorrow_plan?: string | null
+  artist_remarks: Record<string, string>
+  links: { label?: string | null; url: string }[]
+}
+
 export interface Report extends ReportListItem {
   metrics: ReportMetrics
+  lead_input?: LeadInput | null
   narrative: { summary: string; highlights: string[]; concerns: string[] }
   ai_note: string | null; body: string; approved_by_name: string | null
   gmail_message_id: string | null; gmail_draft_id: string | null; email_error: string | null

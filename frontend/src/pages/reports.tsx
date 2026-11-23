@@ -56,7 +56,7 @@ export default function ReportsPage() {
 
   return (
     <>
-      <PageHeader title={isAdmin ? "Reports" : "EOD reports"} description="Consolidated end-of-day production report. Figures come from the records; Claude only drafts the wording." />
+      <PageHeader title={isAdmin ? "Reports" : "EOD reports"} description="Consolidated end-of-day production report. Figures come from the records; the AI only drafts the wording." />
 
       {isAdmin && <TeamReportStatusCard day={day} />}
 

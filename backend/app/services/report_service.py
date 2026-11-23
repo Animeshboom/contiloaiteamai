@@ -39,12 +39,7 @@ def render_body(m: dict, narrative: dict, ai_status: str, ai_source: str | None 
         if narrative.get(key):
             lines += ["", title, *[f"  • {x}" for x in narrative[key]]]
 
-    lines += ["", "ATTENDANCE",
-              f"  Team members: {t['team_members']} · Present: {t['present']} (half day: {t['half_day']}) · "
-              f"Leave: {t['on_leave']} · Absent: {t['absent']}" + (f" · Not checked in: {t['not_checked_in']}" if t["not_checked_in"] else "")]
-    for status, names in m["attendance_by_status"].items():
-        if names and status != "present":
-            lines.append(f"  {status.replace('_', ' ').title()}: {', '.join(names)}")
+    lines += render_attendance(m)
 
     lines += ["", "PRODUCTION",
               f"  Assignments distributed: {t['assignments_distributed']} · Active: {t['assignments_active']} · "
@@ -83,6 +78,75 @@ def render_body(m: dict, narrative: dict, ai_status: str, ai_source: str | None 
               else "Narrative generated from a template")
     lines += ["", "—", f"All figures are computed from {get_settings().app_name} records. {source}; reviewed and approved by the team lead before sending."]
     return "\n".join(lines)
+
+
+_ATT_LABEL = {"present": "present", "half_day": "half day", "leave": "on leave", "absent": "absent",
+              "not_checked_in": "not checked in", "day_off": "day off"}
+_ATT_ORDER = {"absent": 0, "not_checked_in": 1, "leave": 2, "half_day": 3, "present": 4, "day_off": 5}
+
+
+def render_attendance(m: dict) -> list[str]:
+    """Everyone in scope (staff and students), absent / not checked in first, with a one-line count."""
+    t = m["totals"]
+    lines = ["", "ATTENDANCE",
+             f"  Present {t['present']} of {t['team_members']}"
+             + (f" (half day: {t['half_day']})" if t["half_day"] else "")
+             + f" · On leave {t['on_leave']} · Absent {t['absent']}"
+             + (f" · Not checked in {t['not_checked_in']}" if t["not_checked_in"] else "")]
+    show_time = get_settings().show_checkin_times
+    people = sorted(m["artists"], key=lambda a: (_ATT_ORDER.get(a["attendance"], 9), a["name"]))
+    missing = [a for a in people if a["attendance"] in ("absent", "not_checked_in")]
+    if missing:
+        lines.append("  ⚠ NOT PRESENT:")
+        lines += [f"    ✗ {a['name']} — {_ATT_LABEL.get(a['attendance'], a['attendance'])}" for a in missing]
+    rest = [a for a in people if a not in missing]
+    if rest:
+        lines.append("  Everyone else:")
+        for a in rest:
+            mark = "✓" if a["attendance"] in ("present", "half_day") else "·"
+            time = f" (in {a['check_in']})" if show_time and a.get("check_in") else ""
+            lines.append(f"    {mark} {a['name']} — {_ATT_LABEL.get(a['attendance'], a['attendance'])}{time}")
+    return lines
+
+
+# ---------------- team lead notes (kept as a marked block inside the editable body) ----------------
+
+LEAD_START = "──── TEAM LEAD NOTES ────"
+LEAD_END = "──── END OF TEAM LEAD NOTES ────"
+
+
+def render_lead_block(li: dict | None) -> str | None:
+    if not li:
+        return None
+    lines: list[str] = []
+    if (li.get("blockers") or "").strip():
+        lines += ["BLOCKERS / ISSUES", *[f"  {x}" for x in li["blockers"].strip().splitlines()]]
+    if (li.get("tomorrow_plan") or "").strip():
+        lines += (["", ] if lines else []) + ["PLAN FOR TOMORROW", *[f"  {x}" for x in li["tomorrow_plan"].strip().splitlines()]]
+    remarks = {k: v.strip() for k, v in (li.get("artist_remarks") or {}).items() if (v or "").strip()}
+    if remarks:
+        lines += (["", ] if lines else []) + ["REMARKS PER ARTIST", *[f"  • {k}: {v}" for k, v in sorted(remarks.items())]]
+    links = li.get("links") or []
+    if links:
+        lines += (["", ] if lines else []) + ["FILES & LINKS",
+                                             *[f"  • {(x.get('label') or 'Link').strip()}: {x['url']}" for x in links]]
+    if not lines:
+        return None
+    return "\n".join([LEAD_START, *lines, LEAD_END])
+
+
+def apply_lead_block(body: str, li: dict | None) -> str:
+    """Replace (or insert) the lead-notes block; the rest of the body keeps the lead's own edits."""
+    start, end = body.find(LEAD_START), body.find(LEAD_END)
+    if start != -1 and end != -1 and end > start:
+        body = (body[:start].rstrip("\n") + "\n" + body[end + len(LEAD_END):].lstrip("\n")).strip("\n")
+    block = render_lead_block(li)
+    if not block:
+        return body
+    footer = body.rfind("\n\n—\n")
+    if footer != -1:
+        return body[:footer] + "\n\n" + block + body[footer:]
+    return body.rstrip("\n") + "\n\n" + block
 
 
 def _subject(m: dict) -> str:
@@ -137,7 +201,7 @@ def to_out(db: Session, r: DailyReport) -> ReportOut:
     err = db.scalar(select(EmailLog.error).where(EmailLog.entity_type == "daily_report", EmailLog.entity_id == r.id)
                     .order_by(EmailLog.id.desc()).limit(1)) if r.status == ReportStatus.FAILED else None
     base = to_list_item(db, r).model_dump()
-    return ReportOut(**base, metrics=r.metrics, narrative=r.narrative, ai_note=r.ai_note, body=r.body,
+    return ReportOut(**base, metrics=r.metrics, lead_input=r.lead_input, narrative=r.narrative, ai_note=r.ai_note, body=r.body,
                      approved_by_name=n.get(r.approved_by_id), gmail_message_id=r.gmail_message_id,
                      gmail_draft_id=r.gmail_draft_id, email_error=err)
 
@@ -260,8 +324,17 @@ def update(db: Session, actor: User, report_id: int, data: ReportUpdate, ip: str
         r.body = data.body
     if data.recipients is not None:
         r.recipients = _authorized(db, [str(e) for e in data.recipients])
+    if data.lead_input is not None:
+        if r.submitted_at:
+            raise Conflict("This report was already sent to the admin; its notes can no longer change.")
+        li = data.lead_input.model_dump(mode="json")
+        known = {a["name"] for a in r.metrics.get("artists", [])}
+        li["artist_remarks"] = {k: v.strip()[:500] for k, v in li["artist_remarks"].items() if k in known and v.strip()}
+        r.lead_input = li
+        r.body = apply_lead_block(r.body, li)
     audit.record(db, actor_id=actor.id, action="report.edit", entity_type="daily_report", entity_id=r.id,
-                 before=before, after={"subject": r.subject, "body_len": len(r.body), "recipients": r.recipients}, ip=ip)
+                 before=before, after={"subject": r.subject, "body_len": len(r.body), "recipients": r.recipients,
+                                       "lead_notes": data.lead_input is not None}, ip=ip)
     db.commit()
     return r
 

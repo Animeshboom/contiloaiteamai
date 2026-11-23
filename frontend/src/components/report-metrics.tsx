@@ -1,5 +1,6 @@
 import { AlarmClock, CheckCircle2, ClipboardList, Hourglass, Send, UserCheck, XCircle } from "lucide-react"
 
+import { AttendanceRoster } from "@/components/attendance-roster"
 import { AttendanceBadge, StatCard } from "@/components/common"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -25,6 +26,8 @@ export function ReportMetricsView({ m, compact }: { m: ReportMetrics; compact?: 
         <StatCard label="Pending review" icon={<Hourglass />} tone={t.pending_reviews ? "amber" : "default"} value={t.pending_reviews}
           hint={`${t.delayed_assignments} delayed · ${t.incomplete_assignments} incomplete`} />
       </div>
+
+      <AttendanceRoster m={m} />
 
       <Card>
         <CardHeader>

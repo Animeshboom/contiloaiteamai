@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Compass, FileEdit, Folde
 import { toast } from "sonner"
 
 import { ErrorState, LoadingRows } from "@/components/common"
+import { LeadNotesCard } from "@/components/lead-notes"
 import { ReportMetricsView } from "@/components/report-metrics"
 import { AiStatusBadge, ReportStatusBadge } from "@/components/report-status"
 import { Button } from "@/components/ui/button"
@@ -55,7 +56,7 @@ export default function ReportDetailPage() {
   const [sending, setSending] = useState(false)
   useEffect(() => {
     if (r) { setSubject(r.subject); setBody(r.body); setRecipients(r.recipients) }
-  }, [r?.id, r?.status]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [r?.id, r?.status, r?.body]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalidate = [["report"], ["reports"], ["email-logs"]]
   const save = useAction(() => api.patch<Report>(`/reports/${id}`, { subject, body, recipients }), { success: "Draft saved", invalidate })
@@ -244,6 +245,8 @@ export default function ReportDetailPage() {
         </Card>
 
         <div className="space-y-6">
+          <LeadNotesCard report={r} editable={!isAdmin && isDraft && !r.submitted_at}
+            beforeSave={async () => { if (dirty) await api.patch(`/reports/${id}`, { subject, body, recipients }) }} />
           {!isAdmin && (
             <Card>
               <CardHeader>

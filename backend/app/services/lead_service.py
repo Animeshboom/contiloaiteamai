@@ -334,7 +334,8 @@ def _ensure_draft(db: Session, lead: User, d: date) -> int | None:
     if existing:
         return existing
     try:
-        r = report_service.generate(db, lead, ReportGenerate(report_date=d, use_ai=bool(get_settings().anthropic_api_key)),
+        from app.services import ai_provider  # noqa: PLC0415
+        r = report_service.generate(db, lead, ReportGenerate(report_date=d, use_ai=ai_provider.active_config(db) is not None),
                                     ip=None, auto=True)
         return r.id
     except Exception:  # a report problem must not stop everyone else's summary

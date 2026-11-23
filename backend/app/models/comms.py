@@ -88,6 +88,8 @@ class DailyReport(TimestampMixin, Base):
     # In-app reporting to the admin (works with email off): the lead adds issues and sends it.
     auto_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     issues: Mapped[str | None] = mapped_column(Text)
+    # Team lead's additions: {blockers, tomorrow_plan, artist_remarks: {name: text}, links: [{label, url}]}
+    lead_input: Mapped[dict | None] = mapped_column(JSONType)
     submitted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     submitted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     admin_comment: Mapped[str | None] = mapped_column(Text)

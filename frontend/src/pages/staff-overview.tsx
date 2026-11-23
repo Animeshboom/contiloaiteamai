@@ -5,6 +5,7 @@ import { AlarmClock, ClipboardList, Pencil, Film, ListChecks, UserCheck } from "
 import { AttendanceTrendChart, BarList } from "@/components/charts"
 import { AnnouncementsFeed } from "@/components/announcements-feed"
 import { LeadTodayPanel } from "@/components/lead-today"
+import { TodayReportButton } from "@/components/today-report-button"
 import { ProgressBar, TargetDialog } from "@/components/weekly-target"
 import { EmptyState, ErrorState, PageHeader, StatCard, assignmentStatusLabel } from "@/components/common"
 import { Button } from "@/components/ui/button"
@@ -31,7 +32,10 @@ export default function StaffOverviewPage() {
         title="Production overview"
         description={data ? `${formatDate(data.date, true)} · ${user?.role === "admin" ? "All teams" : user?.team?.name ?? "Your team"}` : " "}
         actions={user?.role === "team_lead" && (
-          <Button asChild><Link to="/lead/assignments?new=1"><ClipboardList />New assignment</Link></Button>
+          <div className="flex flex-wrap gap-2">
+            <TodayReportButton />
+            <Button asChild><Link to="/lead/assignments?new=1"><ClipboardList />New assignment</Link></Button>
+          </div>
         )}
       />
 
