@@ -17,7 +17,7 @@ from app.models import (
     AuthorizedRecipient, DailyReport, EmailLog, EmailStatus, ReportStatus, Role, RoleName, Team, User,
 )
 from app.schemas.reports import ReportGenerate, ReportListItem, ReportOut, ReportUpdate
-from app.services import audit, email_service, notification_service, report_ai, report_metrics, scope
+from app.services import ai_provider, audit, email_service, notification_service, report_ai, report_metrics, scope
 
 
 # ---------------- rendering ----------------
@@ -26,8 +26,8 @@ def _fmt_date(d: str) -> str:
     return date.fromisoformat(d).strftime("%a, %d %b %Y")
 
 
-def render_body(m: dict, narrative: dict, ai_status: str) -> str:
-    """Plain-text email. Narrative from Claude (or template); every table is computed data."""
+def render_body(m: dict, narrative: dict, ai_status: str, ai_source: str | None = None) -> str:
+    """Plain-text email. Narrative from the AI provider (or template); every table is computed data."""
     t = m["totals"]
     lines = [f"{get_settings().app_name} — Daily Production Report", f"Date: {_fmt_date(m['report_date'])} ({m['as_of']})"]
     if m["scope"]["teams"]:
@@ -79,8 +79,8 @@ def render_body(m: dict, narrative: dict, ai_status: str) -> str:
     if m["remarks"]:
         lines += ["", "REMARKS", *[f"  • {r}" for r in m["remarks"]]]
 
-    source = {"generated": f"Narrative drafted by Claude ({get_settings().anthropic_model}) from the figures above",
-              }.get(ai_status, "Narrative generated from a template")
+    source = (f"Narrative drafted by {ai_source or 'AI'} from the figures above" if ai_status == "generated"
+              else "Narrative generated from a template")
     lines += ["", "—", f"All figures are computed from {get_settings().app_name} records. {source}; reviewed and approved by the team lead before sending."]
     return "\n".join(lines)
 
@@ -156,7 +156,8 @@ def generate(db: Session, actor: User, data: ReportGenerate, ip: str | None, *, 
     team_id = data.team_id if scope.is_admin(actor) else None
     metrics = report_metrics.compute(db, actor, d, project_id=data.project_id, episode_id=data.episode_id,
                                      artist_id=data.artist_id, team_id=team_id)
-    result = report_ai.generate(metrics, use_ai=data.use_ai)
+    result = report_ai.generate(metrics, use_ai=data.use_ai,
+                                cfg=ai_provider.active_config(db) if data.use_ai else None)
     narrative = result.narrative.model_dump()
     lead_teams = scope.lead_team_ids(db, actor)
     r = DailyReport(
@@ -164,7 +165,8 @@ def generate(db: Session, actor: User, data: ReportGenerate, ip: str | None, *, 
         filters={k: v for k, v in data.model_dump(exclude={"use_ai", "report_date"}).items() if v},
         metrics=metrics, narrative=narrative, ai_summary=narrative["summary"],
         ai_generated=result.status == "generated", ai_status=result.status, ai_note=result.note,
-        subject=_subject(metrics), body=render_body(metrics, narrative, result.status),
+        subject=_subject(metrics), body=render_body(metrics, narrative, result.status,
+                         f"{result.provider} ({result.model})" if result.provider else None),
         status=ReportStatus.DRAFT, recipients=default_recipients(db), created_by_id=actor.id, auto_generated=auto,
     )
     db.add(r)

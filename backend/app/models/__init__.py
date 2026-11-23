@@ -6,6 +6,7 @@ from app.models.org import (
 from app.models.production import (
     Episode, Project, ProjectCharacter, ProjectLocation, Scene, ScenePrompt, scene_characters,
 )
+from app.models.settings import AIProviderSetting
 from app.models.work import (
     Assignment, AssignmentAssignee, AssignmentScene, Attendance, FeedbackPhrase, LeaveRequest, Review,
     Submission, WeeklyTarget,
@@ -13,7 +14,7 @@ from app.models.work import (
 )
 
 __all__ = [
-    "AuditLog", "ChatMessage", "ChatRead", "DailyReport", "EmailLog", "Notification", "Announcement", "announcement_teams", "holiday_teams", "AuthorizedRecipient", "Holiday", "KnownDevice", "Role", "Team", "User",
+    "AIProviderSetting", "AuditLog", "ChatMessage", "ChatRead", "DailyReport", "EmailLog", "Notification", "Announcement", "announcement_teams", "holiday_teams", "AuthorizedRecipient", "Holiday", "KnownDevice", "Role", "Team", "User",
     "Episode", "Project", "ProjectCharacter", "ProjectLocation", "Scene", "ScenePrompt", "scene_characters", "Assignment", "AssignmentAssignee", "AssignmentScene", "Attendance",
     "FeedbackPhrase", "LeaveRequest", "Review", "WeeklyTarget", "Submission", "SubmissionAttachment", "SubmissionDeliverable",
 ]

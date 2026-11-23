@@ -92,9 +92,9 @@ export default function ReportsPage() {
               </NativeSelect>
             </Field>
             <div className="flex flex-col gap-2 lg:col-span-1">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground" title={config?.ai_enabled ? "" : "Set ANTHROPIC_API_KEY to enable"}>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground" title={config?.ai_enabled ? "" : "An admin can add an AI key in Settings → AI provider"}>
                 <Checkbox checked={useAi && !!config?.ai_enabled} disabled={!config?.ai_enabled} onCheckedChange={(c) => setUseAi(!!c)} />
-                {config?.ai_enabled ? "Claude narrative" : "Template narrative (no API key)"}
+                {config?.ai_enabled ? `${config.ai_provider ?? "AI"} narrative` : "Template narrative (no API key)"}
               </label>
               <Button onClick={() => generate.mutate(undefined)} loading={generate.isPending} disabled={!day}><Sparkles />Generate report</Button>
             </div>

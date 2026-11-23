@@ -59,7 +59,7 @@ services:
         sync: false
       - key: EMAIL_SENDER
         sync: false
-      - key: ANTHROPIC_API_KEY        # optional: AI narrative in EOD reports
+      - key: ANTHROPIC_API_KEY        # optional: AI narrative in EOD reports + AI script breakdown
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-opus-5-5

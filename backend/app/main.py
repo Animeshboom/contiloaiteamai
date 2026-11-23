@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.services import chat_service
 from app.api.routes import (
-    activity, announcements, artists, backup, chat, assignments, attendance, auth, dashboard, holidays, lead, notifications, org, production,
+    ai_settings, activity, announcements, artists, backup, chat, assignments, attendance, auth, dashboard, holidays, lead, notifications, org, production,
     reports,
     submissions,
 )
@@ -121,6 +121,7 @@ app.include_router(activity.router, prefix=API)
 app.include_router(lead.router, prefix=API)
 app.include_router(backup.router, prefix=API)
 app.include_router(chat.router, prefix=API)
+app.include_router(ai_settings.router, prefix=API)
 
 
 @app.get("/api/health", tags=["meta"])

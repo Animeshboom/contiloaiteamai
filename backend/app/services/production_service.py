@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.core.timeutils import utcnow
-from app.models import Episode, Project, ProjectCharacter, ProjectStatus, Scene, Team, User
+from app.models import Episode, Project, ProjectCharacter, ProjectLocation, ProjectStatus, Scene, Team, User
 from app.schemas.production import (
     EpisodeCreate, EpisodeOut, EpisodeUpdate, ProjectCreate, ProjectDetail, ProjectOut, ProjectUpdate,
     SceneCreate, SceneOut, SceneUpdate, ScreenplayImportRequest, ParsedSceneItem,
+    BreakdownImportRequest, EpisodeImportResult,
 )
 from app.services import audit, scope
 
@@ -221,53 +222,80 @@ def delete_scene(db: Session, actor: User, scene_id: int, ip: str | None) -> Non
     db.commit()
 
 
+# Scene header formats, tried in order (first format that matches anything wins):
+#   1. "01 | EXT. VILLAGE — MORNING | 01:15"   (extra "| notes" columns allowed)
+#   2. "SCENE 1: Title"
+#   3. Standard sluglines "INT. HOUSE - DAY" / "12. EXT. STREET - NIGHT" (auto-numbered when unnumbered)
 _HEADER_RE = re.compile(
-    r"^\s*(\d+)\s*\|\s*([^|\n]+)\s*\|\s*(\d{1,2}:\d{2})\s*$",
+    r"^[ \t]*(\d+)[ \t]*\|[ \t]*([^|\n]+?)[ \t]*\|[ \t]*(\d{1,2}:\d{2})[ \t]*(?:\|[^\n]*)?$",
     re.MULTILINE
 )
-_FALLBACK_RE = re.compile(
-    r"^\s*(?:SCENE\s+)?(\d+)\s*[:.\-]\s*([^\n]+)",
+_SCENE_WORD_RE = re.compile(
+    r"^[ \t]*SCENE[ \t]+(\d+)[ \t]*[:.\-–—][ \t]*([^\n]+)",
     re.MULTILINE | re.IGNORECASE
 )
-_CHAR_RE = re.compile(r"^\s*([A-Z]{3,20})", re.MULTILINE)
+_SLUGLINE_RE = re.compile(
+    r"^[ \t]*(?:(\d+)[A-Z]?[ \t]*[.):\-]?[ \t]*)?"
+    r"((?:INT\.?[ \t]*/[ \t]*EXT|EXT\.?[ \t]*/[ \t]*INT|I/E|INT|EXT)\.?[ \t][^\n]*\S)[ \t]*$",
+    re.MULTILINE
+)
+# A character cue: an ALL-CAPS name on its own line, or followed by ":" / "(V.O.)" / non-Latin dialogue.
+_CHAR_RE = re.compile(r"^[ \t]*([A-Z][A-Z'\-]{2,19})(?=[ \t]*(?:$|[:(]|[^\x00-\x7F]))")
 _IGNORE_CUES = {
     'CUT', 'EXT', 'INT', 'FADE', 'WIDE', 'BEAT', 'HALF', 'TITLE',
     'INSERT', 'LOW', 'AUDIENCE', 'CONTINUOUS', 'AERIAL', 'WHIP', 'PAN',
-    'SOUND', 'EDIT', 'SHOT', 'ANGLE', 'POV', 'DISSOLVE'
+    'SOUND', 'EDIT', 'SHOT', 'ANGLE', 'POV', 'DISSOLVE',
+    'DAY', 'NIGHT', 'MORNING', 'NOON', 'AFTERNOON', 'EVENING', 'SUNSET', 'SUNRISE', 'DAWN', 'DUSK',
+    'LATER', 'LATE', 'THE', 'END', 'CAMERA', 'FREEZE', 'MONTAGE', 'CLOSE', 'MUSIC', 'SFX', 'VFX',
+    'SUPER', 'INTERCUT', 'FLASHBACK', 'SMASH', 'MATCH', 'TRANSITION', 'BACK', 'ESTABLISHING',
+    'CONT', 'MORE', 'TRACKING', 'ZOOM', 'TILT', 'OVERHEAD', 'MEDIUM', 'SERIES', 'SHOTS',
 }
+_TITLE_MAX = 200
+_SCENE_MAX = 9999
+
+
+def _duration(value: str | None) -> float | None:
+    if not value:
+        return None
+    mins, _, secs = value.strip().partition(":")
+    try:
+        return float(int(mins) * 60 + int(secs))
+    except ValueError:
+        return None
 
 
 def parse_screenplay_text(text: str) -> list[dict]:
-    matches = list(_HEADER_RE.finditer(text))
-    if not matches:
-        matches = list(_FALLBACK_RE.finditer(text))
-
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    matches: list[re.Match] = []
+    for rx in (_HEADER_RE, _SCENE_WORD_RE, _SLUGLINE_RE):
+        matches = list(rx.finditer(text))
+        if matches:
+            break
     if not matches:
         return []
 
     parsed = []
+    used: set[int] = set()
     for i, m in enumerate(matches):
-        num = int(m.group(1))
-        title = m.group(2).strip()
-        dur_sec = None
-        if len(m.groups()) >= 3 and m.group(3):
-            parts = m.group(3).strip().split(":")
-            if len(parts) == 2:
-                try:
-                    dur_sec = float(int(parts[0]) * 60 + int(parts[1]))
-                except ValueError:
-                    dur_sec = None
+        # Every scene needs a unique number in 1..9999 (DB constraint). Missing, out-of-range or
+        # repeated numbers get the next free number so nothing is dropped and the import can't crash.
+        num = int(m.group(1)) if m.group(1) else None
+        if num is None or not (1 <= num <= _SCENE_MAX) or num in used:
+            num = max(used, default=0) + 1
+        used.add(num)
 
-        start_idx = m.end()
+        title = m.group(2).strip()[:_TITLE_MAX] or None
+        dur_sec = _duration(m.group(3)) if m.re is _HEADER_RE else None
+
         end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        body = text[start_idx:end_idx].strip()
+        body = text[m.end():end_idx].strip()
 
         chars = []
         for line in body.splitlines():
             cm = _CHAR_RE.match(line)
             if cm:
-                name = cm.group(1).strip()
-                if name not in _IGNORE_CUES and name not in chars:
+                name = cm.group(1).strip("'-")
+                if len(name) >= 3 and name not in _IGNORE_CUES and name not in chars:
                     chars.append(name)
 
         parsed.append({
@@ -280,28 +308,33 @@ def parse_screenplay_text(text: str) -> list[dict]:
     return parsed
 
 
-def import_screenplay_scenes(db: Session, actor: User, episode_id: int, data: ScreenplayImportRequest,
-                            ip: str | None) -> list[SceneOut]:
-    ep = scope.get_episode_for_edit(db, actor, episode_id)
-    items = []
-    if data.scenes:
-        items = [s.model_dump() for s in data.scenes]
-    elif data.raw_text:
-        items = parse_screenplay_text(data.raw_text)
+def _get_or_create(db: Session, model, project_id: int, name: str):
+    obj = db.scalar(select(model).where(model.project_id == project_id, model.name == name))
+    if obj is None:
+        obj = model(project_id=project_id, name=name)
+        db.add(obj)
+        db.flush()
+    return obj
 
+
+def _apply_scene_items(db: Session, ep: Episode, items: list[dict], replace_existing: bool) -> list[Scene]:
+    """Create/update the given scenes in one episode (no commit). Raises on empty or duplicate numbers."""
     if not items:
-        raise ValidationFailed("No scenes could be parsed from the screenplay text")
+        raise ValidationFailed(f"No scenes to import into episode {ep.episode_number}")
+    seen: set[int] = set()
+    dupes = sorted({it["scene_number"] for it in items if it["scene_number"] in seen or seen.add(it["scene_number"])})
+    if dupes:
+        raise ValidationFailed(f"Scene number(s) used more than once: {', '.join(map(str, dupes))}")
 
-    existing_scenes = list(db.scalars(select(Scene).where(Scene.episode_id == ep.id)))
-    existing_map = {s.scene_number: s for s in existing_scenes}
+    existing_map = {s.scene_number: s for s in db.scalars(select(Scene).where(Scene.episode_id == ep.id))}
     imported_nums = {item["scene_number"] for item in items}
 
-    if data.replace_existing:
+    if replace_existing:
         for s_num, s_obj in existing_map.items():
             if s_num not in imported_nums and s_obj.deleted_at is None:
                 s_obj.deleted_at = utcnow()
 
-    created_or_updated = []
+    out = []
     for item in items:
         num = item["scene_number"]
         ref_links = []
@@ -327,29 +360,72 @@ def import_screenplay_scenes(db: Session, actor: User, episode_id: int, data: Sc
             )
             db.add(sc)
 
-        if item.get("characters"):
-            for c_name in item["characters"]:
-                c_name = c_name.strip()
-                if not c_name:
-                    continue
-                pc = db.scalar(select(ProjectCharacter).where(
-                    ProjectCharacter.project_id == ep.project_id,
-                    ProjectCharacter.name == c_name
-                ))
-                if not pc:
-                    pc = ProjectCharacter(project_id=ep.project_id, name=c_name)
-                    db.add(pc)
-                    db.flush()
-                if pc not in sc.characters:
-                    sc.characters.append(pc)
+        loc_name = (item.get("location") or "").strip()[:120]
+        if loc_name:
+            sc.location_id = _get_or_create(db, ProjectLocation, ep.project_id, loc_name).id
 
-        created_or_updated.append(sc)
+        for c_name in item.get("characters") or []:
+            c_name = c_name.strip()[:120]
+            if not c_name:
+                continue
+            pc = _get_or_create(db, ProjectCharacter, ep.project_id, c_name)
+            if pc not in sc.characters:
+                sc.characters.append(pc)
 
+        out.append(sc)
     db.flush()
+    return out
+
+
+def import_screenplay_scenes(db: Session, actor: User, episode_id: int, data: ScreenplayImportRequest,
+                            ip: str | None) -> list[SceneOut]:
+    ep = scope.get_episode_for_edit(db, actor, episode_id)
+    items = []
+    if data.scenes:
+        items = [s.model_dump() for s in data.scenes]
+    elif data.raw_text:
+        items = parse_screenplay_text(data.raw_text)
+
+    if not items:
+        raise ValidationFailed("No scenes could be parsed from the screenplay text")
+
+    created_or_updated = _apply_scene_items(db, ep, items, data.replace_existing)
     audit.record(db, actor_id=actor.id, action="scene.import_screenplay", entity_type="episode", entity_id=ep.id,
                  after={"scenes_count": len(created_or_updated)}, ip=ip)
     db.commit()
     return [SceneOut.model_validate(s) for s in created_or_updated]
+
+
+def import_breakdown(db: Session, actor: User, project_id: int, data: BreakdownImportRequest,
+                     ip: str | None) -> list[EpisodeImportResult]:
+    """Import a reviewed (AI) breakdown: creates missing episodes by number, then their scenes."""
+    p = scope.get_project_for_edit(db, actor, project_id)
+    if not data.episodes:
+        raise ValidationFailed("No episodes to import")
+    nums = [e.episode_number for e in data.episodes]
+    if len(nums) != len(set(nums)):
+        raise ValidationFailed("Episode numbers must be unique")
+
+    by_num = {e.episode_number: e for e in p.episodes}
+    results = []
+    for item in data.episodes:
+        ep = by_num.get(item.episode_number)
+        created = ep is None or ep.deleted_at is not None
+        if ep is None:
+            ep = Episode(project_id=p.id, episode_number=item.episode_number,
+                         title=item.title or f"Episode {item.episode_number:02d}")
+            db.add(ep)
+            db.flush()
+        elif ep.deleted_at is not None:
+            ep.deleted_at = None
+            ep.title = item.title or ep.title
+        scenes = _apply_scene_items(db, ep, [s.model_dump() for s in item.scenes], data.replace_existing)
+        results.append(EpisodeImportResult(episode_id=ep.id, episode_number=ep.episode_number, created=created,
+                                           scenes=[SceneOut.model_validate(s) for s in scenes]))
+    audit.record(db, actor_id=actor.id, action="scene.import_breakdown", entity_type="project", entity_id=p.id,
+                 after={"episodes": len(results), "scenes_count": sum(len(r.scenes) for r in results)}, ip=ip)
+    db.commit()
+    return results
 
 
 def get_scene(db: Session, scene_id: int) -> Scene:
@@ -359,24 +435,85 @@ def get_scene(db: Session, scene_id: int) -> Scene:
     return sc
 
 
-def extract_text_from_file(filename: str, content: bytes) -> str:
-    """Extract plain text from uploaded screenplay file (.docx, .txt, .fountain, .md)."""
+_SCRIPT_EXTS = (".docx", ".pdf", ".txt", ".fountain", ".md")
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _docx_paragraph_text(p) -> str:
+    out = []
+    for el in p.iter():
+        if el.tag == _W + "t" and el.text:
+            out.append(el.text)
+        elif el.tag == _W + "tab":
+            out.append("\t")
+        elif el.tag in (_W + "br", _W + "cr"):
+            out.append("\n")
+    return "".join(out)
+
+
+def _docx_to_text(content: bytes) -> str:
     import io, zipfile, xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            tree = ET.fromstring(z.read("word/document.xml"))
+    except (zipfile.BadZipFile, KeyError, ET.ParseError):
+        raise ValidationFailed("Could not read this Word file. Save it as .docx (not .doc) and try again.")
+    body = tree.find(_W + "body")
+    lines: list[str] = []
+    for child in (body if body is not None else []):
+        if child.tag == _W + "tbl":
+            # One line per table row, cells joined with " | " so "01 | HEADING | 01:15" tables parse.
+            for tr in child.findall(_W + "tr"):
+                cells = [" ".join(_docx_paragraph_text(p) for p in tc.iter(_W + "p")).strip()
+                         for tc in tr.findall(_W + "tc")]
+                cells = [c for c in cells if c]
+                if cells:
+                    lines.append(" | ".join(cells))
+        else:
+            for p in ([child] if child.tag == _W + "p" else child.iter(_W + "p")):
+                t = _docx_paragraph_text(p)
+                if t.strip():
+                    lines.append(t)
+    return "\n\n".join(lines)
+
+
+def _pdf_to_text(content: bytes) -> str:
+    """Text layer of a PDF ("" for scanned/image-only PDFs — the AI breakdown can still read those)."""
+    import io
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+    if not content.startswith(b"%PDF"):
+        raise ValidationFailed("This doesn't look like a PDF file.")
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        return "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+    except (PdfReadError, ValueError, KeyError) as e:
+        raise ValidationFailed("Could not read this PDF file.") from e
+
+
+def extract_text_from_file(filename: str, content: bytes) -> str:
+    """Extract plain text from uploaded screenplay file (.docx, .pdf, .txt, .fountain, .md)."""
+    from app.core.config import get_settings
     name_lower = (filename or "").lower()
+    if not name_lower.endswith(_SCRIPT_EXTS):
+        raise ValidationFailed("Unsupported file type. Upload a .docx, .pdf, .txt, .fountain or .md script.")
+    limit_mb = get_settings().max_upload_mb
+    if len(content) > limit_mb * 1024 * 1024:
+        raise ValidationFailed(f"File exceeds the {limit_mb} MB limit")
+    if not content.strip():
+        raise ValidationFailed("The file is empty.")
     if name_lower.endswith(".docx"):
-        try:
-            with zipfile.ZipFile(io.BytesIO(content)) as z:
-                xml_content = z.read("word/document.xml")
-            tree = ET.fromstring(xml_content)
-            paragraphs = []
-            for p in tree.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
-                texts = [t.text for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if t.text]
-                if texts:
-                    paragraphs.append("".join(texts))
-            return "\n\n".join(paragraphs)
-        except Exception:
-            pass
-    return content.decode("utf-8", errors="replace")
+        return _docx_to_text(content)
+    if name_lower.endswith(".pdf"):
+        return _pdf_to_text(content)
+    if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return content.decode("utf-16")
+    if b"\x00" in content or content.startswith(b"PK\x03\x04"):
+        raise ValidationFailed("This doesn't look like a text file. Save the script as .txt or .docx.")
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return content.decode("cp1252", errors="replace")
 
 
 def import_screenplay_project(db: Session, actor: User, project_id: int, data: ScreenplayImportRequest,

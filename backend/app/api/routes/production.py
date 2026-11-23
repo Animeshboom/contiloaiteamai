@@ -8,8 +8,12 @@ from app.models import ProjectStatus, User
 from app.schemas.production import (
     EpisodeCreate, EpisodeOut, EpisodeUpdate, ProjectCreate, ProjectDetail, ProjectOut, ProjectUpdate, SceneBulkCreate,
     SceneCreate, SceneOut, SceneUpdate, ScreenplayImportRequest, ParsedSceneItem,
+    BreakdownImportRequest, EpisodeImportResult, ScreenplayTextRequest,
 )
+from app.core.rate_limit import limiter
 from app.services import production_service as svc
+from app.services import screenplay_ai
+from app.services.screenplay_ai import BreakdownResult
 
 router = APIRouter(tags=["projects, episodes & scenes"])
 
@@ -100,6 +104,36 @@ async def upload_screenplay_file(file: UploadFile = File(...), user: User = Depe
         "scenes": [ParsedSceneItem(**s) for s in parsed],
         "scene_count": len(parsed),
     }
+
+
+# AI script breakdown. Plain `def` (not async): the Claude call blocks, so FastAPI runs it in a worker thread.
+@router.post("/screenplay/ai-breakdown", response_model=BreakdownResult)
+@limiter.limit("10/minute")
+def ai_breakdown_file(request: Request, file: UploadFile = File(...), user: User = Depends(require_lead_or_admin),
+                      db: Session = Depends(get_db)):
+    """Upload a script (.docx, .pdf, .txt, .fountain, .md); the AI returns episodes, scenes, characters,
+    locations, durations, artist notes and script issues. Falls back to the basic parser without AI."""
+    content = file.file.read()
+    name = file.filename or ""
+    text = svc.extract_text_from_file(name, content)
+    scanned_pdf = name.lower().endswith(".pdf") and not text.strip()
+    return screenplay_ai.analyze(db, text, pdf_bytes=content if scanned_pdf else None, filename=name)
+
+
+@router.post("/screenplay/ai-breakdown-text", response_model=BreakdownResult)
+@limiter.limit("10/minute")
+def ai_breakdown_text(request: Request, body: ScreenplayTextRequest, user: User = Depends(require_lead_or_admin),
+                      db: Session = Depends(get_db)):
+    """Same as /screenplay/ai-breakdown, for pasted script text."""
+    return screenplay_ai.analyze(db, body.raw_text)
+
+
+@router.post("/projects/{project_id}/screenplay-import-breakdown", response_model=list[EpisodeImportResult],
+             status_code=status.HTTP_201_CREATED)
+def import_breakdown(project_id: int, body: BreakdownImportRequest, request: Request,
+                     user: User = Depends(require_lead_or_admin), db: Session = Depends(get_db)):
+    """Import a reviewed breakdown: creates missing episodes, then their scenes, characters and locations."""
+    return svc.import_breakdown(db, user, project_id, body, client_ip(request))
 
 
 @router.post("/screenplay/parse", response_model=list[ParsedSceneItem])

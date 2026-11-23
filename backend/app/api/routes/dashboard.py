@@ -6,22 +6,25 @@ from app.core.database import get_db
 from app.core.deps import get_any_user, require_artist, require_lead_or_admin
 from app.core.timeutils import studio_today
 from app.models import User
-from app.services import dashboard_service
+from app.services import ai_provider, dashboard_service
 
 router = APIRouter(tags=["dashboard & meta"])
 
 
 @router.get("/meta/config")
-def config(_: User = Depends(get_any_user)):
+def config(_: User = Depends(get_any_user), db: Session = Depends(get_db)):
     """Non-secret settings the UI needs to render times correctly."""
     s = get_settings()
+    ai = ai_provider.active_config(db)
     return {
         "studio_timezone": s.studio_timezone,
         "eod_deadline_hour": s.eod_deadline_hour,
         "studio_today": studio_today(),
         "email_provider": s.email_provider,
         "gmail_backend": s.gmail_backend,
-        "ai_enabled": bool(s.anthropic_api_key),
+        "ai_enabled": ai is not None,
+        "ai_provider": ai.short if ai else None,
+        "ai_model": ai.model if ai else None,
         "max_upload_mb": s.max_upload_mb,
         "email_enabled": s.email_enabled,
         "auth_provider": s.auth_provider,

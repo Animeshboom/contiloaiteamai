@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.timeutils import studio_day_bounds_utc, studio_today, utcnow
 from app.models import Assignment, DailyReport, EmailLog, EmailStatus, Episode, Notification, Project, Scene, User
-from app.services import report_ai
+from app.services import ai_provider, report_ai
 from tests.conftest import ARTIST, ARTIST2, LEAD, LEAD_OTHER, login, uid
 
 MGMT = ["producer@studiotrack.demo", "studio.head@studiotrack.demo"]
@@ -112,13 +112,27 @@ class FakeClaude:
     def __init__(self, narrative=None, stop_reason="end_turn", exc=None):
         self.calls = []
         self._n, self._stop, self._exc = narrative, stop_reason, exc
-        self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self._parse))
+        self.beta = SimpleNamespace(messages=SimpleNamespace(stream=self._stream))
 
-    def _parse(self, **kw):
+    def _stream(self, **kw):
         self.calls.append(kw)
         if self._exc:
             raise self._exc
-        return SimpleNamespace(stop_reason=self._stop, parsed_output=self._n, model=kw["model"])
+        return _Stream(SimpleNamespace(stop_reason=self._stop, parsed_output=self._n, model=kw["model"]))
+
+
+class _Stream:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_final_message(self):
+        return self.msg
 
 
 @pytest.fixture
@@ -126,7 +140,7 @@ def claude(monkeypatch):
     monkeypatch.setattr(get_settings(), "anthropic_api_key", "test-key")
 
     def install(fake):
-        monkeypatch.setattr(report_ai, "_client", lambda: fake)
+        monkeypatch.setattr(ai_provider, "_anthropic_client", lambda *a, **k: fake)
         return fake
     return install
 
@@ -150,7 +164,7 @@ def test_ai_narrative_used_when_figures_check_out(client, as_lead, day, claude):
     assert call["model"] == "claude-opus-5-5" and call["output_format"] is report_ai.Narrative
     assert call["fallbacks"] == "default" and "server-side-fallback-2026-07-01" in call["betas"]
     assert call["output_config"] == {"effort": "medium"}
-    prompt = call["messages"][0]["content"]
+    prompt = call["messages"][0]["content"][0]["text"]
     assert '"scenes_approved": 1' in prompt
     assert "IGNORE ALL PREVIOUS INSTRUCTIONS" not in prompt  # free-text descriptions never reach the model
 

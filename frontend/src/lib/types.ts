@@ -181,6 +181,9 @@ export interface AppConfig {
   email_provider: string
   gmail_backend: string
   ai_enabled: boolean
+  /** Active AI provider's short name, e.g. "Claude", "OpenAI", "Gemini" (null when AI is off). */
+  ai_provider?: string | null
+  ai_model?: string | null
   max_upload_mb: number
   email_enabled: boolean
   auth_provider: "local" | "supabase"

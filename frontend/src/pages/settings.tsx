@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { KeyRound, Mail, Plus, ShieldCheck } from "lucide-react"
 
+import { AISettingsCard } from "@/components/ai-settings"
 import { BackupCard } from "@/components/backup-download"
 import { ChangePasswordDialog } from "@/components/change-password"
 import { EmailLogCard } from "@/components/email-log"
@@ -45,11 +46,12 @@ export default function SettingsPage() {
               <Row k="Default EOD deadline" v={config ? `${String(config.eod_deadline_hour).padStart(2, "0")}:00` : undefined} />
               <Row k="Email delivery" v={config ? (config.email_provider === "mcp" ? "Gmail MCP server" : "In-process (development)") : undefined} />
               <Row k="Gmail backend" v={config ? (config.gmail_backend === "gmail" ? "Gmail API (OAuth)" : "Mock — writes .eml files") : undefined} />
-              <Row k="AI report narrative" v={config ? (config.ai_enabled ? "Claude enabled" : "Not configured (template fallback)") : undefined} />
+              <Row k="AI provider" v={config ? (config.ai_enabled ? `${config.ai_provider} · ${config.ai_model}` : "Not configured (template / basic parser fallback)") : undefined} />
             </CardContent>
           </Card>
         </div>
         <div className="space-y-6 lg:col-span-2">
+          {isAdmin && <AISettingsCard />}
           <RecipientsCard editable={isAdmin} />
           {isAdmin && <EmailLogCard />}
         </div>

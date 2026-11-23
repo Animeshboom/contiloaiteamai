@@ -78,11 +78,12 @@ class SceneOut(BaseModel):
 
 
 class ParsedSceneItem(BaseModel):
-    scene_number: int
-    title: str | None = None
+    scene_number: int = Field(ge=1, le=9999)
+    title: str | None = Field(default=None, max_length=200)
     description: str | None = None
-    duration_sec: float | None = None
+    duration_sec: float | None = Field(default=None, ge=0)
     characters: list[str] = Field(default_factory=list)
+    location: str | None = Field(default=None, max_length=120)
     drive_link: str | None = None
 
 
@@ -90,6 +91,22 @@ class ScreenplayImportRequest(BaseModel):
     raw_text: str | None = None
     scenes: list[ParsedSceneItem] = Field(default_factory=list)
     replace_existing: bool = False
+
+
+class BreakdownEpisodeIn(BaseModel):
+    episode_number: int = Field(ge=1, le=9999)
+    title: str | None = Field(default=None, max_length=200)
+    scenes: list[ParsedSceneItem] = Field(min_length=1, max_length=500)
+
+
+class BreakdownImportRequest(BaseModel):
+    """A reviewed script breakdown: one or more episodes, each with its scenes."""
+    episodes: list[BreakdownEpisodeIn] = Field(min_length=1, max_length=100)
+    replace_existing: bool = False
+
+
+class ScreenplayTextRequest(BaseModel):
+    raw_text: str = Field(min_length=1, max_length=400_000)
 
 
 class EpisodeCreate(BaseModel):
@@ -137,3 +154,10 @@ class ProjectOut(BaseModel):
 
 class ProjectDetail(ProjectOut):
     episodes: list[EpisodeOut] = []
+
+
+class EpisodeImportResult(BaseModel):
+    episode_id: int
+    episode_number: int
+    created: bool
+    scenes: list[SceneOut]

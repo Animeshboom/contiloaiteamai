@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox, Field, Input, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { BreakdownPreview } from "@/components/script-breakdown"
 import { api, errorMessage } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { toImportScene, type BreakdownResult } from "@/lib/script-breakdown"
 import { formatDuration, titleCase } from "@/lib/format"
 import { useAction, useProjects } from "@/lib/queries"
 import { CHOTA_TENALI_EPISODE_1_SCRIPT } from "@/lib/chota-tenali-sample"
@@ -519,12 +522,18 @@ export function ScreenplayImportModal({
   const initialProjectId = episode ? undefined : (project?.id ?? explicitProjectId ?? availableProjects[0]?.id)
   const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(initialProjectId)
   const [scriptText, setScriptText] = useState("")
-  const [replaceExisting, setReplaceExisting] = useState(true)
+  const [replaceExisting, setReplaceExisting] = useState(false)
   const [parsed, setParsed] = useState<ParsedScenePreview[]>([])
   const [parsing, setParsing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const { config } = useAuth()
+  const aiAvailable = !!config?.ai_enabled
+  const [useAI, setUseAI] = useState(true)
+  const aiOn = aiAvailable && useAI
+  const [breakdown, setBreakdown] = useState<BreakdownResult | null>(null)
+  const [epPick, setEpPick] = useState(0)
 
   const activeProjectId = episode ? undefined : (project?.id ?? explicitProjectId ?? selectedProjectId ?? availableProjects[0]?.id)
 
@@ -548,6 +557,18 @@ export function ScreenplayImportModal({
     if (!file) return
     setUploading(true)
     setFileName(file.name)
+    if (aiOn) {
+      try {
+        const res = await api.upload<BreakdownResult>("/screenplay/ai-breakdown", file)
+        applyBreakdown(res)
+      } catch (err) {
+        toast.error(errorMessage(err))
+      } finally {
+        setUploading(false)
+      }
+      return
+    }
+    setBreakdown(null)
     try {
       const res = await api.upload<{
         filename: string
@@ -557,13 +578,41 @@ export function ScreenplayImportModal({
       }>("/screenplay/upload-file", file)
       setScriptText(res.raw_text)
       setParsed(res.scenes)
-      toast.success(`Parsed ${res.scene_count} scenes from ${file.name}`)
+      if (res.scene_count > 0) toast.success(`Parsed ${res.scene_count} scenes from ${file.name}`)
+      else toast.warning(`No scenes found in ${file.name}. Check the scene header format.`)
     } catch (err) {
       toast.error(errorMessage(err))
     } finally {
       setUploading(false)
     }
   }
+
+  const applyBreakdown = (res: BreakdownResult) => {
+    setScriptText(res.raw_text)
+    setParsed([])
+    setEpPick(0)
+    setBreakdown(res)
+    const eps = res.episodes.length
+    if (res.ai_used) toast.success(`AI found ${res.scene_count} scenes${eps > 1 ? ` in ${eps} episodes` : ""}`)
+    else if (res.scene_count > 0) toast.warning(res.note ?? `Basic parser found ${res.scene_count} scenes`)
+    else toast.warning(res.note ?? "No scenes found. Check the scene header format.")
+  }
+
+  const analyzeText = async () => {
+    if (!scriptText.trim()) return
+    setUploading(true)
+    try {
+      applyBreakdown(await api.post<BreakdownResult>("/screenplay/ai-breakdown-text", { raw_text: scriptText }))
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const breakdownScenes = breakdown?.episodes.reduce((n, e) => n + e.scenes.length, 0) ?? 0
+  const pickedEpisode = breakdown?.episodes[Math.min(epPick, breakdown.episodes.length - 1)]
+  const importCount = breakdown ? (episode ? pickedEpisode?.scenes.length ?? 0 : breakdownScenes) : parsed.length
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -580,12 +629,28 @@ export function ScreenplayImportModal({
 
   const handleLoadSample = () => {
     setFileName("Chota Tenali Ep 1 (Sample Script)")
+    setBreakdown(null)
     setScriptText(CHOTA_TENALI_EPISODE_1_SCRIPT)
     parseAction(CHOTA_TENALI_EPISODE_1_SCRIPT)
   }
 
   const importAction = useAction(
     () => {
+      if (breakdown) {
+        if (episode?.id) {
+          return api.post(`/episodes/${episode.id}/scenes/screenplay-import`, {
+            scenes: (pickedEpisode?.scenes ?? []).map(toImportScene),
+            replace_existing: replaceExisting,
+          })
+        }
+        if (!activeProjectId) throw new Error("Please select a project to import scenes into.")
+        return api.post(`/projects/${activeProjectId}/screenplay-import-breakdown`, {
+          episodes: breakdown.episodes
+            .filter((e) => e.scenes.length > 0)
+            .map((e) => ({ episode_number: e.episode_number, title: e.title, scenes: e.scenes.map(toImportScene) })),
+          replace_existing: replaceExisting,
+        })
+      }
       if (episode?.id) {
         return api.post(`/episodes/${episode.id}/scenes/screenplay-import`, {
           raw_text: scriptText,
@@ -602,8 +667,8 @@ export function ScreenplayImportModal({
     },
     {
       success: episode
-        ? `Imported ${parsed.length || "all"} scenes into EP${String(episode.episode_number).padStart(2, "0")}`
-        : `Imported ${parsed.length || "all"} scenes into project!`,
+        ? `Imported ${importCount || "all"} scenes into EP${String(episode.episode_number).padStart(2, "0")}`
+        : `Imported ${importCount || "all"} scenes into project!`,
       invalidate: INVALIDATE,
       onSuccess: () => {
         onSuccess?.()
@@ -637,8 +702,10 @@ export function ScreenplayImportModal({
                 : "Upload & Import Screenplay Script"}
           </DialogTitle>
           <DialogDescription>
-            Upload a shooting script document (.docx, .txt, .fountain, .md) or paste script text.
-            StudioTrack AI automatically extracts all 22 scenes, durations (`mm:ss`), characters, dialogues, and continuity notes.
+            Upload a shooting script (.docx, .pdf, .txt, .fountain, .md) or paste script text.
+            {aiAvailable
+              ? ` With AI on, ${config?.ai_provider ?? "the AI"} finds the episodes, scenes, characters, locations and durations, writes notes for artists, and flags script problems. You review everything before importing.`
+              : " Scenes, durations (mm:ss) and characters are extracted automatically."}
           </DialogDescription>
         </DialogHeader>
 
@@ -665,6 +732,20 @@ export function ScreenplayImportModal({
             </div>
           )}
 
+          {aiAvailable ? (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+              <Checkbox id="use-ai" checked={useAI} onCheckedChange={(c) => setUseAI(!!c)} />
+              <label htmlFor="use-ai" className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground">
+                <Sparkles className="size-3.5 text-primary" />
+                AI breakdown (episodes, scenes, characters, locations, durations, artist notes, script problems)
+              </label>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              AI breakdown is off. An admin can turn it on in Settings → AI provider.
+            </p>
+          )}
+
           {/* Drag & Drop File Upload Area */}
           <div
             onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
@@ -679,7 +760,7 @@ export function ScreenplayImportModal({
             <input
               id="screenplay-file-upload"
               type="file"
-              accept=".docx,.txt,.fountain,.md"
+              accept=".docx,.pdf,.txt,.fountain,.md"
               className="sr-only"
               onChange={handleFileInputChange}
               disabled={uploading}
@@ -693,12 +774,14 @@ export function ScreenplayImportModal({
               </div>
               <div>
                 <span className="text-sm font-semibold text-primary hover:underline">
-                  {uploading ? "Extracting & Parsing Script…" : "Choose Script Document (.docx, .txt, .fountain, .md)"}
+                  {uploading
+                    ? aiOn ? "AI is reading your script… (can take a minute or two)" : "Extracting & Parsing Script…"
+                    : "Choose Script Document (.docx, .pdf, .txt, .fountain, .md)"}
                 </span>
                 <span className="text-xs text-muted-foreground block sm:inline"> or drag &amp; drop file here</span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Full native parsing for Word Document (.docx), Plain Text (.txt), Fountain (.fountain), and Markdown (.md)
+                Word (.docx), PDF (.pdf), Plain Text (.txt), Fountain (.fountain) and Markdown (.md)
               </p>
               {fileName && (
                 <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 font-mono text-xs font-semibold text-emerald-400">
@@ -731,13 +814,39 @@ export function ScreenplayImportModal({
               value={scriptText}
               onChange={(e) => {
                 setScriptText(e.target.value)
+                setBreakdown(null)
                 parseAction(e.target.value)
               }}
             />
+            {aiOn && scriptText.trim() && !breakdown && (
+              <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs"
+                loading={uploading} onClick={analyzeText}>
+                <Sparkles className="size-3.5 text-primary" />Analyze pasted text with AI
+              </Button>
+            )}
           </div>
 
           {/* Breakdown Summary Preview */}
-          {parsing ? (
+          {breakdown ? (
+            <div className="space-y-2">
+              {episode && breakdown.episodes.length > 1 && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-foreground">This script has {breakdown.episodes.length} episodes. Import into this episode:</span>
+                  <NativeSelect value={epPick} onChange={(e) => setEpPick(Number(e.target.value))} aria-label="Episode to import">
+                    {breakdown.episodes.map((e, i) => (
+                      <option key={e.episode_number} value={i}>EP{String(e.episode_number).padStart(2, "0")} — {e.title}</option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
+              {!episode && breakdown.episodes.length > 1 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Episodes are matched by number: missing episodes are created, existing ones are updated.
+                </p>
+              )}
+              <BreakdownPreview value={breakdown} onChange={setBreakdown} />
+            </div>
+          ) : parsing ? (
             <div className="py-4 text-center text-xs text-muted-foreground">Parsing screenplay…</div>
           ) : parsed.length > 0 ? (
             <div className="rounded-lg border bg-card/60 p-3 space-y-3">
@@ -772,7 +881,7 @@ export function ScreenplayImportModal({
             </div>
           ) : scriptText.trim() ? (
             <div className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
-              No scenes matched header format (e.g. `01 | EXT. LOCATION — TIME | 01:15` or `SCENE 1: TITLE`).
+              No scenes matched a header format (e.g. `01 | EXT. LOCATION — TIME | 01:15`, `SCENE 1: TITLE`, or `INT. LOCATION - DAY`).
             </div>
           ) : null}
 
@@ -783,7 +892,7 @@ export function ScreenplayImportModal({
               onCheckedChange={(c) => setReplaceExisting(!!c)}
             />
             <label htmlFor="rep-scenes" className="text-xs text-foreground cursor-pointer">
-              Replace existing scenes in this episode (safely preserves assignment histories and Google Drive links)
+              Remove scenes that are not in this script (scenes with matching numbers are always updated; removed scenes are archived, not erased)
             </label>
           </div>
         </div>
@@ -791,11 +900,11 @@ export function ScreenplayImportModal({
         <DialogFooter className="pt-3 border-t">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
-            disabled={parsed.length === 0 || uploading || (!episode && !activeProjectId)}
+            disabled={importCount === 0 || uploading || (!episode && !activeProjectId)}
             loading={importAction.isPending}
             onClick={() => importAction.mutate(undefined)}
           >
-            Import {parsed.length > 0 ? `${parsed.length} Scenes` : "Screenplay"}
+            Import {importCount > 0 ? `${importCount} Scenes` : "Screenplay"}
           </Button>
         </DialogFooter>
       </DialogContent>

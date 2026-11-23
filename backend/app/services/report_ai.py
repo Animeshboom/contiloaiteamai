@@ -1,7 +1,7 @@
-"""AI narrative for daily reports — Claude writes prose only.
+"""AI narrative for daily reports — the AI writes prose only.
 
 Safeguards:
-  * Claude receives only the deterministic metrics snapshot (no free-text descriptions, feedback
+  * The AI receives only the deterministic metrics snapshot (no free-text descriptions, feedback
     or comments that could carry injected instructions) and is told to treat it as data.
   * Output is structured (summary / highlights / concerns), validated by the SDK.
   * A number guard rejects the narrative if it contains any figure not present in the snapshot;
@@ -14,9 +14,11 @@ import logging
 import re
 from dataclasses import dataclass
 
+from types import SimpleNamespace
+
 from pydantic import BaseModel, Field
 
-from app.core.config import get_settings
+from app.services import ai_provider
 
 log = logging.getLogger("studiotrack.report_ai")
 
@@ -51,6 +53,7 @@ class NarrativeResult:
     status: str  # generated | template | rejected_unverified_numbers | ai_error | refused
     note: str | None = None
     model: str | None = None
+    provider: str | None = None  # short display name, e.g. "Claude"
 
 
 # ---------------- number guard ----------------
@@ -116,54 +119,35 @@ def template_narrative(metrics: dict) -> Narrative:
     return Narrative(summary=" ".join(s), highlights=highlights, concerns=concerns)
 
 
-# ---------------- Claude ----------------
+# ---------------- AI (provider chosen in Settings) ----------------
 
-def _client():
-    import anthropic  # noqa: PLC0415
-
-    s = get_settings()
-    return anthropic.Anthropic(api_key=s.anthropic_api_key, max_retries=2, timeout=90.0)
-
-
-def generate(metrics: dict, use_ai: bool = True) -> NarrativeResult:
-    s = get_settings()
+def generate(metrics: dict, use_ai: bool = True, cfg: "ai_provider.AIConfig | None" = None) -> NarrativeResult:
     if not use_ai:
         return NarrativeResult(template_narrative(metrics), "template", "AI narrative not requested")
-    if not s.anthropic_api_key:
-        return NarrativeResult(template_narrative(metrics), "template", "ANTHROPIC_API_KEY is not configured")
-
-    import anthropic  # noqa: PLC0415
+    if cfg is None:
+        return NarrativeResult(template_narrative(metrics), "template",
+                               "No AI provider configured (Settings → AI provider, or ANTHROPIC_API_KEY)")
 
     snapshot = json.dumps(metrics, sort_keys=True, ensure_ascii=False)
-    try:
-        response = _client().beta.messages.parse(
-            model=s.anthropic_model,
-            max_tokens=4000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"<metrics_snapshot>\n{snapshot}\n</metrics_snapshot>"}],
-            output_format=Narrative,
-            output_config={"effort": "medium"},
-            # Server-side refusal fallback: if the primary model declines, the API re-runs on a fallback model.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
-    except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.APIStatusError) as e:
-        log.warning("Claude narrative failed: %s", type(e).__name__)
-        return NarrativeResult(template_narrative(metrics), "ai_error", f"Claude API error: {type(e).__name__}")
+    res = ai_provider.structured(cfg, system=SYSTEM_PROMPT, schema=Narrative, max_tokens=4000, timeout=90.0,
+                                 text=f"<metrics_snapshot>\n{snapshot}\n</metrics_snapshot>")
+    if res.status == "refused":
+        return NarrativeResult(template_narrative(metrics), "refused", f"{cfg.short} declined to write the narrative")
+    if res.status == "truncated" or (res.status == "ok" and res.parsed is None):
+        return NarrativeResult(template_narrative(metrics), "ai_error", f"{cfg.short} response was incomplete")
+    if res.status != "ok":
+        log.warning("AI narrative failed: %s", res.note)
+        return NarrativeResult(template_narrative(metrics), "ai_error", res.note or f"{cfg.short} API error")
 
-    if response.stop_reason == "refusal":
-        return NarrativeResult(template_narrative(metrics), "refused", "Claude declined to write the narrative")
-    if response.stop_reason == "max_tokens" or response.parsed_output is None:
-        return NarrativeResult(template_narrative(metrics), "ai_error", "Claude response was incomplete")
-
+    response = SimpleNamespace(model=res.model, parsed_output=res.parsed)
     narrative: Narrative = response.parsed_output
     narrative.highlights = narrative.highlights[:4]
     narrative.concerns = narrative.concerns[:4]
     text = " ".join([narrative.summary, *narrative.highlights, *narrative.concerns])
     bad = unverified_figures(text, metrics)
     if bad:
-        log.warning("Claude narrative rejected; unverified figures: %s", bad)
+        log.warning("AI narrative rejected; unverified figures: %s", bad)
         return NarrativeResult(template_narrative(metrics), "rejected_unverified_numbers",
                                "AI narrative discarded: it contained figures not in the records ("
                                + ", ".join(sorted(set(bad))[:10]) + ")", model=response.model)
-    return NarrativeResult(narrative, "generated", None, model=response.model)
+    return NarrativeResult(narrative, "generated", None, model=response.model, provider=cfg.short)

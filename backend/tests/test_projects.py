@@ -149,3 +149,63 @@ GURUJI पढ़ाई होगी या पंचायत यहीं ल�
                              json={"raw_text": script}).json()
     assert len(p_imported) == 2
     assert p_imported[0]["duration_sec"] == 75.0
+
+
+def _docx(body_xml: str) -> bytes:
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("word/document.xml",
+                   '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                   f"<w:body>{body_xml}</w:body></w:document>")
+    return buf.getvalue()
+
+
+def test_screenplay_parser_formats_and_edge_cases(client, as_admin):
+    def parse(text):
+        r = client.post("/api/v1/screenplay/parse", headers=as_admin, json={"raw_text": text})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    # Standard sluglines (no numbers) are recognised and auto-numbered; numbered ones keep their number.
+    std = parse("INT. HOUSE - DAY\n\nJOHN\nHello.\n\nMARY (V.O.)\nHi.\n\n12. EXT. STREET - NIGHT\n\nDAY breaks.\nBOB: yo")
+    assert [(s["scene_number"], s["title"]) for s in std] == [(1, "INT. HOUSE - DAY"), (12, "EXT. STREET - NIGHT")]
+    assert std[0]["characters"] == ["JOHN", "MARY"]
+    assert std[1]["characters"] == ["BOB"]  # "DAY breaks." is action, not a character
+
+    # Numbered lines inside a scene are not treated as new scenes.
+    sc = parse("SCENE 1: Opening\nJOHN: at 10:30 we go\n2. Buy milk\nSCENE 2: Market")
+    assert [s["title"] for s in sc] == ["Opening", "Market"]
+
+    # Repeated / zero scene numbers are renumbered, long titles truncated.
+    dup = parse("SCENE 1: A\nx\nSCENE 1: B\ny\nSCENE 0: " + "z" * 500)
+    assert [s["scene_number"] for s in dup] == [1, 2, 3]
+    assert len(dup[2]["title"]) == 200
+
+
+def test_screenplay_import_with_duplicates_does_not_crash(client, as_admin):
+    pid = _project(client, as_admin, code="DUP-1", title="Dupes").json()["id"]
+    r = client.post(f"/api/v1/projects/{pid}/screenplay-import", headers=as_admin,
+                    json={"raw_text": "SCENE 1: A\nx\nSCENE 1: B\ny"})
+    assert r.status_code == 201, r.text
+    assert [s["scene_number"] for s in r.json()] == [1, 2]
+
+    r = client.post(f"/api/v1/projects/{pid}/screenplay-import", headers=as_admin,
+                    json={"scenes": [{"scene_number": 3}, {"scene_number": 3}]})
+    assert r.status_code == 422
+
+
+def test_screenplay_upload_docx_table_and_bad_files(client, as_admin):
+    row = lambda *cells: "<w:tr>" + "".join(f"<w:tc><w:p><w:r><w:t>{c}</w:t></w:r></w:p></w:tc>" for c in cells) + "</w:tr>"
+    doc = _docx("<w:tbl>" + row("01", "EXT. VILLAGE — MORNING", "01:15") + row("02", "INT. HOUSE — NIGHT", "00:30") + "</w:tbl>"
+                "<w:p><w:r><w:t>RAMA</w:t><w:br/><w:t>Hello</w:t></w:r></w:p>")
+    res = client.post("/api/v1/screenplay/upload-file", headers=as_admin,
+                      files={"file": ("script.docx", doc, "application/octet-stream")})
+    assert res.status_code == 200, res.text
+    assert [s["duration_sec"] for s in res.json()["scenes"]] == [75.0, 30.0]
+
+    for name, content in [("script.docx", b"not a zip"), ("script.pdf", b"%PDF-1.4"),
+                          ("script.txt", b"\x00\x01binary"), ("script.txt", b"   ")]:
+        r = client.post("/api/v1/screenplay/upload-file", headers=as_admin,
+                        files={"file": (name, content, "application/octet-stream")})
+        assert r.status_code == 422, (name, r.status_code)
